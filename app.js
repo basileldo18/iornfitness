@@ -463,7 +463,7 @@ const fetchCardioStats = async () => {
         });
 
         appState.cardioStats = { day: daySum, month: monthSum, year: yearSum };
-        updateAnalyticsUI();
+        refreshAnalyticsUI();
     }
 };
 
@@ -562,7 +562,8 @@ const performCheckOut = async () => {
         appState.activeVisit = null;
         appState.todayTotalTime += durationMins;
         updateAttendanceUI();
-        fetchGymHistory().then(updateAnalyticsUI);
+        updateAttendanceUI();
+        fetchGymHistory().then(refreshAnalyticsUI);
     } else {
         alert(error.message);
     }
@@ -881,7 +882,7 @@ const formatTimeStats = (mins) => {
     return `${m}m`;
 };
 
-const updateAnalyticsUI = () => {
+const refreshAnalyticsUI = () => {
     // Safety check for elements
     const dGym = document.getElementById('statDayGym');
     const mGym = document.getElementById('statMonthGym');
@@ -903,7 +904,7 @@ const updateAnalyticsUI = () => {
     }
 };
 
-window.updateAnalyticsUI = updateAnalyticsUI; // Expose if needed
+window.refreshAnalyticsUI = refreshAnalyticsUI; // Expose if needed
 window.deleteFood = deleteFood;
 window.deleteExercise = deleteExercise;
 window.jumpToDate = (date) => {
