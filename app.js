@@ -118,6 +118,11 @@ window.handleAuthSubmit = async (e) => {
 
             if (data.session) {
                 msg.textContent = "Success! Logging in...";
+
+                // Check if they wanted bio
+                if (document.getElementById('setupBioCheck').checked) {
+                    await registerBiometric();
+                }
                 // The onAuthStateChange listener will handle the redirection
             } else {
                 msg.textContent = "Sign up successful! Please check your email for the confirmation link.";
@@ -141,6 +146,9 @@ window.toggleAuthMode = () => {
     document.getElementById('authBtn').textContent = isSignup ? "Sign Up" : "Login";
     document.getElementById('toggleAuthBtn').textContent = isSignup ? "Already have an account? Login" : "New here? Sign Up";
     document.getElementById('authMsg').textContent = "";
+
+    const bioOpt = document.getElementById('bioOptIn');
+    if (bioOpt) bioOpt.style.display = isSignup ? 'flex' : 'none';
 };
 
 window.handleLogout = async () => {
@@ -153,52 +161,120 @@ window.handleLogout = async () => {
 };
 
 // Biometric / WebAuthn Logic
+// Biometric Logic
+window.registerBiometric = async () => {
+    const msg = document.getElementById('authMsg') || { textContent: '' };
+    try {
+        if (!window.PublicKeyCredential) { alert("Biometrics not supported on this device."); return; }
+
+        // Create Challenge
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+
+        const publicKey = {
+            challenge: challenge,
+            rp: { name: "IronTrack Fitness" },
+            user: {
+                id: Uint8Array.from("USER_ID_" + Date.now(), c => c.charCodeAt(0)),
+                name: appState.email || "user@irontrack.app",
+                displayName: "IronTrack User"
+            },
+            pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+            authenticatorSelection: { authenticatorAttachment: "platform" },
+            timeout: 60000,
+            attestation: "direct"
+        };
+
+        msg.textContent = "Please scan your fingerprint/face...";
+
+        const credential = await navigator.credentials.create({ publicKey });
+
+        if (credential) {
+            console.log("Credential Created:", credential);
+            localStorage.setItem('ironTrack_bioRegistered', 'true');
+            localStorage.setItem('ironTrack_bioID', credential.id); // In real app, send to server
+            alert("Biometric Registered Successfully!");
+            updateBioStatus();
+
+            // If we are in the auth screen, we might want to auto-login (simulated)
+            if (!appState.userId && isSignup) {
+                // user is technically signed in via supabase immediately after signup usually
+            }
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Biometric Setup Failed: " + e.message);
+    }
+};
+
 window.handleBiometricLogin = async () => {
     const msg = document.getElementById('authMsg');
 
-    if (!supabaseClient) {
-        msg.textContent = "Offline. Biometrics unavailable.";
+    if (!localStorage.getItem('ironTrack_bioRegistered')) {
+        alert("No fingerprint registered on this device. Please login with password and set it up in Profile.");
         return;
     }
 
-    // Attempt to use platform authenticator (TouchID/FaceID)
     try {
-        // Note: For full biometric login with Supabase, you typically need to set up 'Passkeys'.
-        // This is a simplified client-side check to see if the device supports it,
-        // but the actual auth flow requires a previous setup of MFA/Passkey which is complex for this scope.
-        // However, we can simulate the intent or use the WebAuthn API if configured.
+        msg.textContent = "Verifying Biometrics...";
 
-        // Let's try to verify if the user is available via Passkey (WebAuthn)
-        // This assumes the user has already registered a passkey.
-        msg.textContent = "Prompting Biometrics...";
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
 
-        const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-        if (!available) {
-            throw new Error("Biometrics not available on this device.");
-        }
-
-        // Trigger generic WebAuthn assertion (Attempt)
-        // If your project isn't configured for this, it might fail or do nothing useful yet.
-        // But this is the code to trigger it.
         const assertion = await navigator.credentials.get({
             publicKey: {
-                challenge: new Uint8Array([1, 2, 3, 4]), // Should be from server
+                challenge: challenge,
                 rpId: window.location.hostname,
-                userVerification: "preferred",
-                timeout: 60000
+                userVerification: "required",
             }
         });
 
         if (assertion) {
-            msg.textContent = "Biometric Verified! (Demo)";
-            // Here you would send 'assertion' to your server to verify and get a session token.
-            // Since we don't have a backend function set up for this specific demo flow,
-            // we will tell the user to use email/password for the first time.
-            alert("Biometric verified locally! To link this to your account, please login with password first.");
+            msg.textContent = "Biometric Verified!";
+            // In a real app, verify assertion on server to get session.
+            // Here we rely on previous session or mocked 'offline' access for demo functionality if real session expired.
+
+            // Allow access if keys match (Simplified)
+            if (assertion.id === localStorage.getItem('ironTrack_bioID')) {
+                alert("Identity Verified via Biometrics!");
+
+                // If we have a cached supbase session, use it. If not, this is strictly a Client-Side verify 
+                // that doesn't grant DB access without the token. 
+                // We will attempt to reload which might pick up the session? 
+                // Or just show app if we are treating this as an 'App Lock'
+
+                if (supabaseClient) {
+                    const { data: { session } } = await supabaseClient.auth.getSession();
+                    if (session) {
+                        handleSessionOk(session.user.id);
+                    } else {
+                        alert("Note: For full database access, please login with password once to refresh your session token.");
+                        // Fallback to offline/limited
+                        handleSessionOk('bio_verified_user');
+                    }
+                } else {
+                    handleSessionOk('bio_verified_user');
+                }
+            } else {
+                throw new Error("Credential mismatch");
+            }
         }
     } catch (e) {
         console.error(e);
         msg.textContent = "Biometric Error: " + e.message;
+    }
+};
+
+const updateBioStatus = () => {
+    const el = document.getElementById('bioStatus');
+    if (el) {
+        if (localStorage.getItem('ironTrack_bioRegistered')) {
+            el.textContent = "Fingerprint Active";
+            el.style.color = "var(--success)";
+        } else {
+            el.textContent = "No fingerprint registered.";
+            el.style.color = "var(--text-muted)";
+        }
     }
 };
 
@@ -574,6 +650,7 @@ window.navigateTo = (viewId) => {
         document.getElementById('profileWeight').value = appState.profile.weight;
         document.getElementById('profileHeight').value = appState.profile.height;
         document.getElementById('profileAge').value = appState.profile.age || 25;
+        updateBioStatus();
     }
 };
 

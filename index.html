@@ -26,6 +26,14 @@
                 <input type="password" id="password" class="input-field" placeholder="Password" required
                     autocomplete="current-password">
 
+                <!-- Biometric Opt-in (Hidden by default, shown via toggleAuthMode) -->
+                <div id="bioOptIn"
+                    style="display:none; margin-bottom: 20px; text-align: left; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="setupBioCheck"
+                        style="width: 20px; height: 20px; accent-color: var(--primary);">
+                    <label for="setupBioCheck" class="text-xs text-muted">Register Fingerprint / FaceID</label>
+                </div>
+
                 <button type="submit" class="btn" id="authBtn">Login</button>
             </form>
 
@@ -335,6 +343,21 @@
         <!-- PROFILE VIEW -->
         <section id="profile" class="view hidden">
             <h2>My Profile</h2>
+
+            <!-- Biometric Settings -->
+            <div class="card" style="margin-bottom: 20px;">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3>Biometric Access</h3>
+                        <p id="bioStatus" class="text-sm text-muted">No fingerprint registered.</p>
+                    </div>
+                    <button class="btn" style="width: auto; padding: 8px 16px; font-size: 0.8rem;"
+                        onclick="registerBiometric()">
+                        Setup
+                    </button>
+                </div>
+            </div>
+
             <div class="card">
                 <form id="profileForm">
                     <label class="text-sm text-muted">Current Weight (kg)</label>
