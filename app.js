@@ -358,27 +358,8 @@ const fetchProfile = async () => {
     }
 };
 
-const updateAnalyticsUI = () => {
-    // Safety check for elements
-    const dGym = document.getElementById('statDayGym');
-    const mGym = document.getElementById('statMonthGym');
-    const yGym = document.getElementById('statYearGym');
-    const dCardio = document.getElementById('statDayCardio');
-    const mCardio = document.getElementById('statMonthCardio');
-    const yCardio = document.getElementById('statYearCardio');
 
-    if (appState.gymStats && dGym) {
-        dGym.textContent = formatTimeStats(appState.gymStats.day);
-        mGym.textContent = formatTimeStats(appState.gymStats.month);
-        yGym.textContent = formatTimeStats(appState.gymStats.year);
-    }
 
-    if (appState.cardioStats && dCardio) {
-        dCardio.textContent = formatTimeStats(appState.cardioStats.day);
-        mCardio.textContent = formatTimeStats(appState.cardioStats.month);
-        yCardio.textContent = formatTimeStats(appState.cardioStats.year);
-    }
-};
 
 const fetchCurrentLog = async () => {
     if (!supabaseClient) return;
