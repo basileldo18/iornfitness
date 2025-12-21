@@ -140,6 +140,35 @@ window.deleteAccount = async () => {
     }
 };
 
+// Navigation with Restriction
+const navigateTo = (viewId) => {
+    // RESTRICTION: Can only log workout (track) if checked in (appState.activeVisit)
+    if (viewId === 'track' && !appState.activeVisit) {
+        alert("Please Check In to the gym before logging your workout!");
+        return;
+    }
+
+    const views = document.querySelectorAll('.view');
+    views.forEach(v => v.classList.add('hidden'));
+
+    document.getElementById(viewId).classList.remove('hidden');
+
+    // Update nav
+    const navItems = document.querySelectorAll('.nav-item');
+    navItems.forEach(n => n.classList.remove('active'));
+
+    if (viewId === 'home') navItems[0].classList.add('active');
+    if (viewId === 'track') navItems[1].classList.add('active');
+    if (viewId === 'history') navItems[2].classList.add('active');
+    if (viewId === 'photos') navItems[3].classList.add('active');
+    if (viewId === 'profile') navItems[4].classList.add('active');
+
+    if (viewId === 'history') {
+        renderHistory();
+    }
+};
+window.navigateTo = navigateTo;
+
 const showMainApp = () => {
     document.getElementById('auth').classList.add('hidden');
     document.getElementById('mainNav').classList.remove('hidden');
