@@ -39,13 +39,22 @@ let isSignup = false;
 const initApp = async () => {
     // Listen for Auth State Changes
     if (supabaseClient) {
-        // Check current session
-        const { data: { session } } = await supabaseClient.auth.getSession();
+        try {
+            // Check current session
+            const { data: { session }, error } = await supabaseClient.auth.getSession();
 
-        if (session) {
-            handleSessionOk(session.user.id);
-        } else {
-            // Show Auth Screen (default)
+            if (error) {
+                console.warn("Session error:", error);
+                // If session is invalid/stale, clear it
+                await supabaseClient.auth.signOut();
+                return;
+            }
+
+            if (session) {
+                handleSessionOk(session.user.id);
+            }
+        } catch (e) {
+            console.error("Auth init exception:", e);
         }
 
         supabaseClient.auth.onAuthStateChange((event, session) => {
@@ -84,7 +93,6 @@ const handleSessionOk = async (userId) => {
     }
 
     appState.userId = userId;
-    // localStorage.setItem('ironTrack_userId', userId); // Not needed with Supabase Auth
     showMainApp();
 
     await Promise.all([
@@ -93,8 +101,8 @@ const handleSessionOk = async (userId) => {
         fetchHistoryKeys(),
         fetchPhotos(),
         fetchLastVisit(),
-        fetchGymHistory(), // This now handles the gym time aggregation
-        fetchCardioStats() // New function
+        fetchGymHistory(),
+        fetchCardioStats()
     ]);
     updateUI();
 };
