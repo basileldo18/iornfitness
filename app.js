@@ -74,6 +74,15 @@ const initApp = async () => {
 };
 
 const handleSessionOk = async (userId) => {
+    // Check for "Soft Deleted" account
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (session && session.user.user_metadata && session.user.user_metadata.deleted_account) {
+        alert("This account has been deleted and cannot be accessed.");
+        await supabaseClient.auth.signOut();
+        window.location.reload();
+        return;
+    }
+
     appState.userId = userId;
     // localStorage.setItem('ironTrack_userId', userId); // Not needed with Supabase Auth
     showMainApp();
@@ -82,15 +91,45 @@ const handleSessionOk = async (userId) => {
         fetchProfile(),
         fetchCurrentLog(),
         fetchHistoryKeys(),
-        fetchHistoryKeys(),
-        fetchPhotos(),
-        fetchLastVisit(),
         fetchPhotos(),
         fetchLastVisit(),
         fetchGymHistory(), // This now handles the gym time aggregation
         fetchCardioStats() // New function
     ]);
     updateUI();
+};
+
+window.deleteAccount = async () => {
+    if (!confirm("Are you sure you want to PERMANENTLY DELETE your account? This cannot be undone.")) return;
+    if (!confirm("Really? All your data (photos, workouts, history) will be lost.")) return;
+
+    if (!supabaseClient) {
+        alert("Offline: Cannot delete cloud account.");
+        return;
+    }
+
+    const userId = appState.userId;
+
+    try {
+        // Tag user as deleted in Auth Metadata (Client-side workaround since we can't fully delete Auth User without Admin API)
+        await supabaseClient.auth.updateUser({ data: { deleted_account: true } });
+
+        // Delete data from all tables manually (Cascade is safer if set up in SQL, but explicit here for safety)
+        await supabaseClient.from('progress_photos').delete().eq('user_id', userId);
+        await supabaseClient.from('workout_sets').delete().eq('user_id', userId);
+        await supabaseClient.from('food_items').delete().eq('user_id', userId);
+        await supabaseClient.from('daily_logs').delete().eq('user_id', userId);
+        await supabaseClient.from('gym_visits').delete().eq('user_id', userId);
+        await supabaseClient.from('profiles').delete().eq('user_id', userId);
+
+        alert("Account deleted.");
+        await supabaseClient.auth.signOut();
+        window.location.reload();
+
+    } catch (err) {
+        console.error("Delete Error:", err);
+        alert("Error deleting data: " + err.message);
+    }
 };
 
 const showMainApp = () => {
