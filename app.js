@@ -152,10 +152,26 @@ window.toggleAuthMode = () => {
 };
 
 window.handleLogout = async () => {
-    if (supabaseClient) {
-        await supabaseClient.auth.signOut();
-        // Page reloads on SIGNED_OUT event
-    } else {
+    // Immediate visual feedback
+    const btn = document.activeElement;
+    if (btn && btn.tagName === 'BUTTON') {
+        const originalText = btn.innerHTML;
+        btn.textContent = "Logging out...";
+        btn.disabled = true;
+    }
+
+    try {
+        if (supabaseClient) {
+            // Force sign out, don't wait forever
+            await Promise.race([
+                supabaseClient.auth.signOut(),
+                new Promise(resolve => setTimeout(resolve, 2000)) // 2s timeout
+            ]);
+        }
+    } catch (e) {
+        console.warn("Logout warning:", e);
+    } finally {
+        // Force reload to clear state and show auth screen
         window.location.reload();
     }
 };
@@ -1015,6 +1031,118 @@ document.getElementById('exerciseForm').addEventListener('submit', (e) => {
     addExercise(document.getElementById('exName').value, document.getElementById('exDumbbell').value, document.getElementById('exSets').value, document.getElementById('exReps').value);
     alert('Set logged!');
 });
+
+// Video Generation Logic
+window.downloadReelVideo = async () => {
+    if (appState.photos.length === 0) {
+        alert("No photos to generate a reel!");
+        return;
+    }
+
+    const statusMsg = document.createElement('div');
+    statusMsg.style.cssText = "position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(0,0,0,0.9); color:white; padding:20px; border-radius:10px; z-index:9999; text-align:center;";
+    statusMsg.innerHTML = "<h3>Generating Reel...</h3><p>Please wait while we stitch your photos.</p>";
+    document.body.appendChild(statusMsg);
+
+    try {
+        const sortedPhotos = [...appState.photos].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        // Setup Canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = 1080; // Shorts/Reel resolution vertical
+        canvas.height = 1920;
+        const ctx = canvas.getContext('2d');
+
+        // Setup Recorder
+        const stream = canvas.captureStream(30); // 30 FPS
+        const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+        const chunks = [];
+
+        recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) chunks.push(e.data);
+        };
+
+        recorder.start();
+
+        // Helper to load image
+        const loadImage = (url) => {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = "anonymous"; // Important for canvas export
+                img.onload = () => resolve(img);
+                img.onerror = (e) => reject(e);
+                img.src = url;
+            });
+        };
+
+        // Draw Loop
+        for (let i = 0; i < sortedPhotos.length; i++) {
+            const photo = sortedPhotos[i];
+
+            try {
+                // Load Image
+                // Note: If using Supabase storage, ensure CORS is configured or this might fail depending on bucket settings
+                // We use the proxy URL if needed, but standard public URLs often work if CORS is set "*"
+                const img = await loadImage(photo.photo_url);
+
+                // Draw duration (e.g., 2 seconds per photo = 60 frames)
+                const durationFrames = 60;
+
+                for (let f = 0; f < durationFrames; f++) {
+                    ctx.fillStyle = "#000";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // Draw Image (Cover style)
+                    const scale = Math.max(canvas.width / img.width, canvas.height / img.height);
+                    const x = (canvas.width / 2) - (img.width / 2) * scale;
+                    const y = (canvas.height / 2) - (img.height / 2) * scale;
+                    ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+
+                    // Overlay Text
+                    ctx.fillStyle = "rgba(0,0,0,0.5)";
+                    ctx.fillRect(0, canvas.height - 300, canvas.width, 300);
+                    ctx.fillStyle = "white";
+                    ctx.font = "bold 80px sans-serif";
+                    ctx.textAlign = "center";
+                    ctx.fillText(photo.date, canvas.width / 2, canvas.height - 150);
+
+                    // Watermark
+                    ctx.font = "40px sans-serif";
+                    ctx.fillStyle = "#ccfe1e";
+                    ctx.fillText("IronTrack Fitness", canvas.width / 2, 100);
+
+                    await new Promise(r => requestAnimationFrame(r));
+                }
+            } catch (err) {
+                console.error("Error loading image for reel:", err);
+                // Skip broken images
+            }
+        }
+
+        recorder.stop();
+
+        // Wait for stop
+        await new Promise(r => recorder.onstop = r);
+
+        // Download
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `irontrack_reel_${Date.now()}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        statusMsg.innerHTML = "<h3>Done!</h3><p>Downloading video...</p>";
+        setTimeout(() => document.body.removeChild(statusMsg), 2000);
+
+    } catch (e) {
+        console.error(e);
+        statusMsg.innerHTML = "<h3>Error</h3><p>" + e.message + "</p>";
+        setTimeout(() => document.body.removeChild(statusMsg), 3000);
+    }
+};
 
 document.getElementById('profileForm').addEventListener('submit', (e) => {
     e.preventDefault();
