@@ -421,6 +421,20 @@ const fetchCurrentLog = async () => {
         appState.currentLog.exercises = exData;
         appState.currentLog.didWorkout = (exData.length > 0);
     }
+
+    // Fetch Gym Visits for this specific date (Login/Logout info)
+    const { data: visitData, error: vErr } = await supabaseClient.from('gym_visits')
+        .select('*')
+        .eq('user_id', appState.userId)
+        .gte('check_in', appState.selectedDate + 'T00:00:00')
+        .lte('check_in', appState.selectedDate + 'T23:59:59')
+        .order('check_in', { ascending: true });
+
+    if (!vErr && visitData) {
+        appState.currentLog.visits = visitData;
+    } else {
+        appState.currentLog.visits = [];
+    }
 };
 
 const fetchHistoryKeys = async () => {
@@ -839,6 +853,61 @@ const updateUI = () => {
     // Home Stats
     document.getElementById('weightDisplay').textContent = appState.profile.weight;
     document.getElementById('streakDisplay').textContent = appState.historyKeys.length;
+
+    // Day Summary Log (Login/Logout)
+    const daySummaryCard = document.getElementById('daySummaryCard');
+    const daySummaryList = document.getElementById('daySummaryList');
+    // If we have visits or if we are viewing a past date, show summary instead of live attendance
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isToday = appState.selectedDate === todayStr;
+
+    // Logic: If it's today, show "Attendance Card" (Active Controls). 
+    // If it's history OR we want to see details, show Summary Card.
+    // Actually, user requested "In recent log when clicking view...", which implies viewing history.
+    // Let's show Summary Card if there are visits to show, OR if it's not today.
+
+    // Always clear list first
+    if (daySummaryList) daySummaryList.innerHTML = '';
+
+    if (appState.currentLog.visits && appState.currentLog.visits.length > 0) {
+        if (daySummaryCard) daySummaryCard.style.display = 'block';
+
+        daySummaryList.innerHTML = appState.currentLog.visits.map(v => {
+            const inTime = new Date(v.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const outTime = v.check_out ? new Date(v.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Active';
+            const dur = v.duration_minutes ? `${v.duration_minutes}m` : '-';
+
+            return `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;">
+                <div style="display: flex; flex-direction: column;">
+                    <span style="color: var(--text-muted); font-size: 0.75rem;">LOGIN</span>
+                    <span style="font-weight: bold;">${inTime}</span>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: center;">
+                     <span style="font-size: 0.8rem; color: var(--primary);">${dur}</span>
+                     <span style="font-size: 1.2rem;">&rarr;</span>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                    <span style="color: var(--text-muted); font-size: 0.75rem;">LOGOUT</span>
+                    <span style="font-weight: bold;">${outTime}</span>
+                </div>
+            </div>`;
+        }).join('');
+    } else {
+        if (daySummaryCard) daySummaryCard.style.display = 'none';
+        // If not today and no visits, explicitly hide Summary
+        if (!isToday && daySummaryCard) daySummaryCard.style.display = 'none';
+    }
+
+    // Toggle Live Attendance Card visibility based on date
+    const liveCard = document.getElementById('attendanceStatus')?.closest('.card');
+    if (liveCard) {
+        if (isToday) {
+            liveCard.style.display = 'flex'; // Restore flex for this specific card
+        } else {
+            liveCard.style.display = 'none';
+        }
+    }
 
     // Status
     const statusIcon = document.getElementById('workoutCheckIcon');
