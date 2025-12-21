@@ -909,6 +909,31 @@ const updateUI = () => {
         }
     }
 
+    // --- POPULATE DASHBOARD WORKOUT LIST (Requested Feature) ---
+    const homeLogCard = document.getElementById('dailyWorkoutLogCard');
+    const homeLogList = document.getElementById('dailyWorkoutList');
+
+    if (homeLogCard && homeLogList) {
+        if (appState.currentLog.exercises && appState.currentLog.exercises.length > 0) {
+            homeLogCard.style.display = 'block';
+            homeLogList.innerHTML = appState.currentLog.exercises.map(e => `
+                <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px;">
+                     <div style="display: flex; justify-content: space-between;">
+                        <span style="font-weight: 600;">${e.name}</span>
+                        <span class="text-xs text-muted">${e.equipment}</span>
+                     </div>
+                     <div class="text-sm text-primary" style="margin-top: 4px;">
+                        ${e.equipment === 'Treadmill'
+                    ? `${e.sets} mins • ${e.reps} kcal`
+                    : `${e.sets} sets x ${e.reps} reps`}
+                     </div>
+                </div>
+            `).join('');
+        } else {
+            homeLogCard.style.display = 'none';
+        }
+    }
+
     // Status
     const statusIcon = document.getElementById('workoutCheckIcon');
     if (statusIcon && appState.currentLog.didWorkout) {
