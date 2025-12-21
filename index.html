@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IronTrack Fitness</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+</head>
+
+<body>
+
+    <!-- AUTH VIEW -->
+    <section id="auth" class="auth-container"
+        style="display: flex; flex-direction: column; justify-content: center; min-height: 100vh; padding: 20px;">
+        <div class="card" style="text-align: center; padding: 40px 20px;">
+            <h1 class="text-primary" style="margin-bottom: 30px;">IronTrack</h1>
+
+            <form id="authForm" onsubmit="handleAuthSubmit(event)">
+                <input type="email" id="email" class="input-field" placeholder="Email" required autocomplete="email">
+                <input type="password" id="password" class="input-field" placeholder="Password" required
+                    autocomplete="current-password">
+
+                <button type="submit" class="btn" id="authBtn">Login</button>
+            </form>
+
+            <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 10px;">
+                <button class="btn btn-outline" onclick="toggleAuthMode()" id="toggleAuthBtn">New here? Sign Up</button>
+
+                <div class="divider" style="margin: 20px 0; border-top: 1px solid rgba(255,255,255,0.1);"></div>
+
+                <button class="btn"
+                    style="background: #333; color: white; display: flex; align-items: center; justify-content: center; gap: 10px;"
+                    onclick="handleBiometricLogin()">
+                    <svg viewBox="0 0 24 24" fill="var(--primary)" width="24" height="24">
+                        <path
+                            d="M17.81 4.47c-.08 0-.16-.02-.23-.06C15.66 3.42 14 3 12.01 3c-1.98 0-3.86.47-5.57 1.41-.24.13-.54.04-.68-.2-.13-.24-.04-.55.2-.68C7.82 2.52 9.86 2 12.01 2c2.13 0 3.99.47 6.03 1.52.25.13.34.43.21.67-.09.18-.26.28-.44.28zM3.5 9.72c-.1 0-.2-.03-.29-.09-.23-.16-.28-.47-.12-.7.99-1.4 2.25-2.5 3.75-3.27C9.98 4.04 14 4.03 17.15 5.65c1.5.77 2.76 1.86 3.75 3.25.16.22.11.54-.12.7-.23.16-.54.11-.7-.12-.9-1.26-2.04-2.25-3.39-2.94-2.87-1.47-6.54-1.47-9.4.01-1.36.7-2.5 1.7-3.4 2.96-.08.14-.23.21-.39.21zm6.25 12.07c-.13 0-.26-.05-.35-.15-.87-.87-1.34-1.43-2.01-2.64-.69-1.23-1.05-2.73-1.05-4.34 0-2.97 2.54-5.39 5.66-5.39s5.66 2.42 5.66 5.39c0 .28-.22.5-.5.5s-.5-.22-.5-.5c0-2.42-2.09-4.39-4.66-4.39-2.57 0-4.66 1.97-4.66 4.39 0 1.44.32 2.77.93 3.85.64 1.15 1.08 1.64 1.85 2.42.19.2.19.51 0 .71-.11.1-.24.15-.37.15zm7.17-1.85c-.11 0-.21-.03-.31-.08C14.59 18.85 13.23 18 12 18c-1.26 0-2.61.85-4.63 1.89-.25.12-.54.02-.66-.23-.12-.25-.02-.54.23-.66 2.01-1.03 3.73-1.97 5.06-1.97 1.35 0 2.92.86 5.02 1.95.24.13.34.43.21.67-.09.18-.26.28-.45.28z" />
+                    </svg>
+                    Biometric Login
+                </button>
+            </div>
+            <p id="authMsg" class="text-danger" style="margin-top: 20px; font-size: 0.9rem;"></p>
+        </div>
+    </section>
+
+    <!-- Header / Nav for Desktop -->
+    <nav class="bottom-nav hidden" id="mainNav">
+        <button class="nav-item active" onclick="navigateTo('home')">
+            <svg class="nav-icon" viewBox="0 0 24 24">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
+            </svg>
+            <span>Home</span>
+        </button>
+        <button class="nav-item" onclick="navigateTo('track')">
+            <svg class="nav-icon" viewBox="0 0 24 24">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+            </svg>
+            <span>Log</span>
+        </button>
+        <button class="nav-item" onclick="navigateTo('history')">
+            <svg class="nav-icon" viewBox="0 0 24 24">
+                <path
+                    d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z" />
+            </svg>
+            <span>History</span>
+        </button>
+        <button class="nav-item" onclick="navigateTo('photos')">
+            <svg class="nav-icon" viewBox="0 0 24 24">
+                <path
+                    d="M19 8Q20 8 20 9V19Q20 20 19 20H5Q4 20 4 19V9Q4 8 5 8H8L9 6H15L16 8H19M12 10Q10.3 10 9.2 11.2Q8 12.3 8 14Q8 15.7 9.2 16.8Q10.3 18 12 18Q13.7 18 14.8 16.8Q16 15.7 16 14Q16 12.3 14.8 11.2Q13.7 10 12 10M12 12Q12.8 12 13.4 12.6Q14 13.2 14 14Q14 14.8 13.4 15.4Q12.8 16 12 16Q11.2 16 10.6 15.4Q10 14.8 10 14Q10 13.2 10.6 12.6Q11.2 12 12 12Z" />
+            </svg>
+            <span>Photos</span>
+        </button>
+        <button class="nav-item" onclick="navigateTo('profile')">
+            <svg class="nav-icon" viewBox="0 0 24 24">
+                <path
+                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z" />
+            </svg>
+            <span>Profile</span>
+        </button>
+    </nav>
+
+    <main class="container hidden" id="mainContainer">
+
+
+        <!-- HOME VIEW -->
+        <section id="home" class="view">
+            <!-- Dashboard Header -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 25px;">
+                <div>
+                    <h1 style="margin:0; font-size: 1.8rem; font-weight: 800; line-height: 1;">Dashboard</h1>
+                    <input type="date" id="datePicker" class="date-input" style="margin-top: 5px; opacity: 0.7;">
+                </div>
+
+                <div class="flex" style="align-items: center;">
+                    <!-- Hidden reference for JS safety -->
+                    <span id="workoutCheckIcon" style="display:none;"></span>
+                </div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="stats-grid"
+                style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+                <div class="stat-card">
+                    <div class="stat-value" id="weightDisplay">--</div>
+                    <div class="stat-label">kg Weight</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value text-primary" id="streakDisplay">0</div>
+                    <div class="stat-label">Day Streak</div>
+                </div>
+            </div>
+
+            <!-- Login Info -->
+            <!-- Attendance Card (Replacing Login Info) -->
+            <div class="card"
+                style="display: flex; align-items: center; justify-content: space-between; background: linear-gradient(145deg, #1a1d24, #14161b); border: 1px solid rgba(255,255,255,0.05);">
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span id="attendanceStatus"
+                        style="color: var(--primary); font-size: 0.65rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; line-height: 1.4; text-shadow: 0 0 10px rgba(204, 254, 30, 0.3);">
+                        NOT <br> CHECKED <br> IN
+                    </span>
+                    <span id="attendanceTime"
+                        style="color: white; font-size: 1.8rem; font-weight: 800; font-feature-settings: 'tnum'; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
+                        0h 0m
+                    </span>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <button id="manualCheckInBtn" onclick="performCheckIn()" class="btn hidden"
+                        style="display: none; background: var(--primary); color: black; border-radius: 16px; padding: 12px 20px; font-weight: 800; font-size: 0.9rem; box-shadow: 0 4px 20px rgba(204, 254, 30, 0.3); width: auto;">Check
+                        In</button>
+
+                    <button id="manualCheckOutBtn" onclick="performCheckOut()" class="btn hidden"
+                        style="display: none; background: var(--danger); color: white; border-radius: 16px; padding: 12px 20px; font-weight: 800; font-size: 0.9rem; box-shadow: 0 4px 20px rgba(255, 71, 87, 0.3); width: auto;">Check
+                        Out</button>
+
+                    <button onclick="openQRScanner()"
+                        style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); width: 50px; height: 50px; border-radius: 25px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); cursor: pointer; transition: 0.2s;">
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                            <path
+                                d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm13-2h-3v2h3v4h2v-2h1v-2h-3zm1 8h-2v2h2v-2zm-6-2h2v6h-2v-6zm-2 2h2v2h-2v-2zm-2-2h2v2h-2v-2zm2-2h-2v-2h2v2z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <br>
+
+
+
+            <!-- Workout Status -->
+            <div class="card" id="workoutStatusCard">
+                <div class="flex justify-between items-center">
+                    <h3>Workout Today</h3>
+                    <div id="workoutCheckIcon"
+                        style="width: 30px; height: 30px; border-radius: 50%; border: 2px solid #333; display: grid; place-items: center;">
+                        <!-- Checkmark svg added via JS if done -->
+                    </div>
+                </div>
+                <p class="text-muted text-sm">Log an exercise to mark as complete.</p>
+                <button class="btn" style="margin-top: 15px;" onclick="navigateTo('track')">Log
+                    Workout</button>
+            </div>
+
+            <!-- Equipment -->
+            <div class="card">
+                <h3>My Gear</h3>
+                <div style="margin-top: 10px;">
+                    <span class="equip-tag">2x 5kg Dumbbells</span>
+                    <span class="equip-tag">3x 7.5kg Dumbbells</span>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- TRACK VIEW -->
+        <section id="track" class="view hidden">
+            <h2>Log Activity</h2>
+
+            <!-- Exercise Form -->
+            <div id="logExerciseSection">
+                <div class="card">
+                    <h3>Record Set</h3>
+                    <form id="exerciseForm">
+                        <label class="text-sm text-muted">Equipment</label>
+                        <select class="input-field" id="exDumbbell" onchange="toggleExerciseFields()">
+                            <option value="5">5kg Dumbbell</option>
+                            <option value="7.5">7.5kg Dumbbell</option>
+                            <option value="0">Bodyweight</option>
+                            <option value="Treadmill">Treadmill</option>
+                        </select>
+
+                        <label class="text-sm text-muted">Exercise Name</label>
+                        <input type="text" class="input-field" placeholder="e.g. Bicep Curl / Running" id="exName"
+                            required>
+
+                        <div class="flex gap-4">
+                            <div class="w-full">
+                                <label class="text-sm text-muted" id="lblSets">Sets</label>
+                                <input type="number" class="input-field" value="3" id="exSets">
+                            </div>
+                            <div class="w-full">
+                                <label class="text-sm text-muted" id="lblReps">Reps</label>
+                                <input type="number" class="input-field" value="10" id="exReps">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn">Log Set</button>
+                    </form>
+                </div>
+                <h3>Today's Workouts</h3>
+                <div id="exerciseList" class="flex-col gap-2">
+                    <!-- JS populated -->
+                </div>
+                <div style="margin-top: 20px;">
+                    <button class="btn" style="background: var(--success); color: white;"
+                        onclick="finishWorkout()">Finish Workout</button>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- HISTORY VIEW -->
+        <section id="history" class="view hidden">
+            <h2>History</h2>
+            <div class="card">
+                <div class="month-summary">
+                    <h3 id="historyMonthName">December</h3>
+                    <span class="text-primary text-sm"><span id="daysWorkedOutCount">0</span> Days Active</span>
+                </div>
+                <div class="heatmap" id="monthHeatmap">
+                    <!-- Days generated by JS -->
+                </div>
+            </div>
+
+            <h3>Recent Logs</h3>
+            <div id="historyLogList" class="flex-col gap-2">
+                <!-- JS populated -->
+            </div>
+        </section>
+
+
+        <!-- PHOTOS VIEW -->
+        <section id="photos" class="view hidden">
+            <h2>Progress Photos</h2>
+
+            <div class="card" style="text-align: center; padding: 30px;">
+                <div style="margin-bottom: 15px;">
+                    <svg viewBox="0 0 24 24" fill="var(--primary)" width="64" height="64">
+                        <path
+                            d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                    </svg>
+                </div>
+                <h3>Track Your Transformation</h3>
+                <p class="text-muted text-sm">Snap a photo to see your progress over time.</p>
+
+                <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;"
+                    onchange="handlePhotoUpload(this)">
+                <button class="btn" onclick="openCamera()">Take Photo</button>
+            </div>
+
+            <div class="card bg-gradient" style="margin-top: 20px; cursor: pointer;" onclick="openPhotoReel()">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3>View Progress Reel</h3>
+                        <p class="text-sm" style="color: rgba(255,255,255,0.8);">Watch your journey 1 by 1</p>
+                    </div>
+                    <svg viewBox="0 0 24 24" fill="white" width="32" height="32">
+                        <path d="M8 5v14l11-7z" />
+                    </svg>
+                </div>
+            </div>
+
+            <h3>Recent Snaps</h3>
+            <div id="photoGrid" class="stats-grid" style="grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                <!-- Populated by JS -->
+            </div>
+        </section>
+
+        <!-- CAMERA MODAL -->
+        <div id="cameraModal" class="hidden"
+            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: black; z-index: 2000; flex-direction: column;">
+            <video id="cameraStream" autoplay playsinline muted
+                style="width: 100%; height: 100%; object-fit: cover;"></video>
+            <canvas id="cameraCanvas" style="display: none;"></canvas>
+
+            <div
+                style="position: absolute; bottom: 30px; left: 0; width: 100%; display: flex; justify-content: center; gap: 20px; align-items: center;">
+                <button onclick="closeCamera()"
+                    style="background: rgba(255,255,255,0.2); border: none; padding: 15px; border-radius: 50%; color: white; width: 50px; height: 50px;">&times;</button>
+                <button onclick="takePicture()"
+                    style="background: white; border: 5px solid rgba(255,255,255,0.5); padding: 0; border-radius: 50%; width: 80px; height: 80px;"></button>
+                <button style="width: 50px; height: 50px; visibility: hidden;"></button> <!-- Spacer -->
+            </div>
+        </div>
+
+        <!-- QR SCANNER MODAL -->
+        <div id="qrModal" class="hidden"
+            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: black; z-index: 2100; flex-direction: column; justify-content: center; align-items: center;">
+            <div id="qr-reader" style="width: 100%; max-width: 500px;"></div>
+            <button onclick="closeQRScanner()"
+                style="margin-top: 20px; background: rgba(255,255,255,0.2); border: none; padding: 15px 30px; border-radius: 30px; color: white;">Cancel
+                Data Scan</button>
+        </div>
+
+        <!-- PHOTO REEL MODAL -->
+        <div id="reelModal" class="hidden"
+            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: black; z-index: 1000; flex-direction: column; display: none;">
+            <div class="flex justify-between items-center"
+                style="padding: 20px; position: absolute; top: 0; width: 100%;">
+                <span id="reelDate" style="color: white; font-weight: bold;">Date</span>
+                <button onclick="closeReel()"
+                    style="background:none; border:none; color:white; font-size: 24px;">&times;</button>
+            </div>
+
+            <div
+                style="flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; position: relative;">
+                <img id="reelImage" src="" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+
+                <button onclick="prevReel()"
+                    style="position: absolute; left: 10px; background: rgba(255,255,255,0.2); border: none; padding: 10px; border-radius: 50%; color: white;">&lt;</button>
+                <button onclick="nextReel()"
+                    style="position: absolute; right: 10px; background: rgba(255,255,255,0.2); border: none; padding: 10px; border-radius: 50%; color: white;">&gt;</button>
+            </div>
+            <p id="reelCounter" style="color: grey; text-align: center; margin-bottom: 20px;">1 of 5</p>
+        </div>
+
+
+        <!-- PROFILE VIEW -->
+        <section id="profile" class="view hidden">
+            <h2>My Profile</h2>
+            <div class="card">
+                <form id="profileForm">
+                    <label class="text-sm text-muted">Current Weight (kg)</label>
+                    <input type="number" step="0.1" class="input-field" id="profileWeight">
+
+                    <label class="text-sm text-muted">Height (cm)</label>
+                    <input type="number" class="input-field" id="profileHeight">
+
+                    <label class="text-sm text-muted">Age (years)</label>
+                    <input type="number" class="input-field" id="profileAge">
+
+
+                    <button type="submit" class="btn">Save Profile</button>
+
+                </form>
+            </div>
+
+            <div class="card" style="border-color: var(--danger);">
+                <h3>Danger Zone</h3>
+                <p class="text-sm text-muted" style="margin-bottom: 10px;">Clear all local data and start fresh.</p>
+                <div class="flex gap-2">
+                    <button class="btn" style="background: #333; color: white;" onclick="handleLogout()">Logout</button>
+                    <button class="btn" style="background: var(--danger); color: white;" onclick="resetApp()">Reset All
+                        Data</button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

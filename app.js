@@ -1,0 +1,923 @@
+// SUPABASE CONFIG (Please fill these)
+const SUPABASE_URL = 'https://gqilryoyjrihktwdrwqb.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxaWxyeW95anJpaGt0d2Ryd3FiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYxNTc5MzUsImV4cCI6MjA4MTczMzkzNX0.H1n3v74Zl4YaINhL5hvPsiUaeroI1GKuv353-dEi5YM';
+
+// Initialize Supabase
+let supabaseClient = null;
+if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_KEY.length > 20) {
+    try {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    } catch (e) {
+        console.error("Supabase init error:", e);
+    }
+} else {
+    console.warn("Supabase Keys missing. Running in Offline Mode.");
+}
+
+// State
+let appState = {
+    userId: null,
+    selectedDate: new Date().toISOString().split('T')[0], // Defaults to today
+    profile: { weight: 70, height: 175, age: 25, carbGoal: 250 },
+    currentLog: { food: [], exercises: [], didWorkout: false },
+    historyKeys: [],
+    photos: [],
+    historyKeys: [],
+    photos: [],
+    reelIndex: 0,
+    activeVisit: null, // For gym attendance
+    todayTotalTime: 0,
+    gymHistory: {} // date string -> total minutes
+};
+
+// --- SILENT AUTH & INIT ---
+
+// --- AUTH & INIT ---
+let isSignup = false;
+
+// Remove old mock ID generation
+const initApp = async () => {
+    // Listen for Auth State Changes
+    if (supabaseClient) {
+        // Check current session
+        const { data: { session } } = await supabaseClient.auth.getSession();
+
+        if (session) {
+            handleSessionOk(session.user.id);
+        } else {
+            // Show Auth Screen (default)
+        }
+
+        supabaseClient.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' && session) {
+                handleSessionOk(session.user.id);
+            } else if (event === 'SIGNED_OUT') {
+                window.location.reload();
+            }
+        });
+    } else {
+        // Fallback for offline usage
+        alert("Warning: Supabase keys missing. Running in Offline Mode.");
+        appState.userId = 'offline_user';
+        showMainApp();
+    }
+
+    // Init Date Picker
+    const datePicker = document.getElementById('datePicker');
+    if (datePicker) {
+        datePicker.value = appState.selectedDate;
+        datePicker.addEventListener('change', (e) => {
+            appState.selectedDate = e.target.value;
+            fetchCurrentLog().then(updateUI);
+        });
+    }
+};
+
+const handleSessionOk = async (userId) => {
+    appState.userId = userId;
+    // localStorage.setItem('ironTrack_userId', userId); // Not needed with Supabase Auth
+    showMainApp();
+
+    await Promise.all([
+        fetchProfile(),
+        fetchCurrentLog(),
+        fetchHistoryKeys(),
+        fetchHistoryKeys(),
+        fetchPhotos(),
+        fetchLastVisit(),
+        fetchGymHistory()
+    ]);
+    updateUI();
+};
+
+const showMainApp = () => {
+    document.getElementById('auth').classList.add('hidden');
+    document.getElementById('mainNav').classList.remove('hidden');
+    document.getElementById('mainContainer').classList.remove('hidden');
+    updateUI(); // Initial render
+};
+
+// Auth Actions
+window.handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const msg = document.getElementById('authMsg');
+
+    if (!supabaseClient) return;
+
+    msg.textContent = "Processing...";
+
+    try {
+        if (isSignup) {
+            const { data, error } = await supabaseClient.auth.signUp({
+                email,
+                password
+            });
+            if (error) throw error;
+
+            if (data.session) {
+                msg.textContent = "Success! Logging in...";
+                // The onAuthStateChange listener will handle the redirection
+            } else {
+                msg.textContent = "Sign up successful! Please check your email for the confirmation link.";
+            }
+        } else {
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
+                email,
+                password
+            });
+            if (error) throw error;
+            // Listener will handle redirect
+        }
+    } catch (err) {
+        console.error("Auth Error:", err);
+        msg.textContent = "Error: " + (err.error_description || err.message);
+    }
+};
+
+window.toggleAuthMode = () => {
+    isSignup = !isSignup;
+    document.getElementById('authBtn').textContent = isSignup ? "Sign Up" : "Login";
+    document.getElementById('toggleAuthBtn').textContent = isSignup ? "Already have an account? Login" : "New here? Sign Up";
+    document.getElementById('authMsg').textContent = "";
+};
+
+window.handleLogout = async () => {
+    if (supabaseClient) {
+        await supabaseClient.auth.signOut();
+        // Page reloads on SIGNED_OUT event
+    } else {
+        window.location.reload();
+    }
+};
+
+// Biometric / WebAuthn Logic
+window.handleBiometricLogin = async () => {
+    const msg = document.getElementById('authMsg');
+
+    if (!supabaseClient) {
+        msg.textContent = "Offline. Biometrics unavailable.";
+        return;
+    }
+
+    // Attempt to use platform authenticator (TouchID/FaceID)
+    try {
+        // Note: For full biometric login with Supabase, you typically need to set up 'Passkeys'.
+        // This is a simplified client-side check to see if the device supports it,
+        // but the actual auth flow requires a previous setup of MFA/Passkey which is complex for this scope.
+        // However, we can simulate the intent or use the WebAuthn API if configured.
+
+        // Let's try to verify if the user is available via Passkey (WebAuthn)
+        // This assumes the user has already registered a passkey.
+        msg.textContent = "Prompting Biometrics...";
+
+        const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        if (!available) {
+            throw new Error("Biometrics not available on this device.");
+        }
+
+        // Trigger generic WebAuthn assertion (Attempt)
+        // If your project isn't configured for this, it might fail or do nothing useful yet.
+        // But this is the code to trigger it.
+        const assertion = await navigator.credentials.get({
+            publicKey: {
+                challenge: new Uint8Array([1, 2, 3, 4]), // Should be from server
+                rpId: window.location.hostname,
+                userVerification: "preferred",
+                timeout: 60000
+            }
+        });
+
+        if (assertion) {
+            msg.textContent = "Biometric Verified! (Demo)";
+            // Here you would send 'assertion' to your server to verify and get a session token.
+            // Since we don't have a backend function set up for this specific demo flow,
+            // we will tell the user to use email/password for the first time.
+            alert("Biometric verified locally! To link this to your account, please login with password first.");
+        }
+    } catch (e) {
+        console.error(e);
+        msg.textContent = "Biometric Error: " + e.message;
+    }
+};
+
+
+
+
+// --- DATA FETCHING ---
+
+const fetchProfile = async () => {
+    if (!supabaseClient) return;
+    const { data } = await supabaseClient.from('profiles').select('*').eq('user_id', appState.userId).single();
+    if (data) {
+        appState.profile = {
+            weight: parseFloat(data.weight),
+            height: parseFloat(data.height),
+            age: data.age ? parseInt(data.age) : 25,
+            carbGoal: parseInt(data.carb_goal)
+        };
+    } else {
+        // Init profile if none
+        updateProfile(70, 175, 25, 250);
+    }
+};
+
+const fetchCurrentLog = async () => {
+    if (!supabaseClient) return;
+
+    const { data: foodData, error: fErr } = await supabaseClient.from('food_items').select('*')
+        .eq('user_id', appState.userId).eq('date', appState.selectedDate);
+
+    const { data: exData, error: eErr } = await supabaseClient.from('workout_sets').select('*')
+        .eq('user_id', appState.userId).eq('date', appState.selectedDate);
+
+    // Only overwrite if we got data back (i.e. we are online and sync worked)
+    // If we are offline or keys are bad, keep local optimistic state so user sees it briefly (or fix Supabase keys)
+    if (!fErr && foodData) {
+        appState.currentLog.food = foodData;
+    }
+
+    if (!eErr && exData) {
+        appState.currentLog.exercises = exData;
+        appState.currentLog.didWorkout = (exData.length > 0);
+    }
+};
+
+const fetchHistoryKeys = async () => {
+    if (!supabaseClient) return;
+    const { data } = await supabaseClient.from('daily_logs').select('date')
+        .eq('user_id', appState.userId).eq('did_workout', true);
+    if (data) appState.historyKeys = data.map(d => d.date);
+};
+
+const fetchPhotos = async () => {
+    if (!supabaseClient) return;
+    const { data } = await supabaseClient.from('progress_photos').select('*').eq('user_id', appState.userId).order('date', { ascending: false });
+    if (data) {
+        appState.photos = data;
+        renderPhotos();
+    }
+};
+
+const fetchGymHistory = async () => {
+    if (!supabaseClient) return;
+
+    // Fetch all visits to aggregate (optimization: fetch only recent months if needed)
+    const { data } = await supabaseClient.from('gym_visits')
+        .select('check_in, duration_minutes')
+        .eq('user_id', appState.userId)
+        .not('duration_minutes', 'is', null);
+
+    if (data) {
+        const history = {};
+        data.forEach(v => {
+            const date = v.check_in.split('T')[0];
+            if (!history[date]) history[date] = 0;
+            history[date] += v.duration_minutes;
+        });
+        appState.gymHistory = history;
+    }
+};
+
+// --- ATTENDANCE LOGIC ---
+const fetchLastVisit = async () => {
+    if (!supabaseClient) return;
+    appState.todayTotalTime = 0;
+
+    // Get today's visits to calc total time
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const { data: visits } = await supabaseClient.from('gym_visits')
+        .select('*')
+        .eq('user_id', appState.userId)
+        .gte('check_in', startOfDay.toISOString());
+
+    if (visits) {
+        // Sum completed visits
+        visits.forEach(v => {
+            if (v.duration_minutes) appState.todayTotalTime += v.duration_minutes;
+        });
+
+        // Check for active visit (check_out is null)
+        const active = visits.find(v => !v.check_out);
+        if (active) {
+            appState.activeVisit = active;
+        } else {
+            appState.activeVisit = null;
+        }
+        updateAttendanceUI();
+    }
+};
+
+const handleQRScanSuccess = async (decodedText) => {
+    closeQRScanner();
+    console.log("QR Scanned:", decodedText);
+
+    // Simple validation (in real app, use a secret key)
+    if (!decodedText.toLowerCase().includes('gym')) {
+        alert("Invalid QR Code. Please scan the official Gym Entry code.");
+        return;
+    }
+
+    if (appState.activeVisit) {
+        performCheckOut();
+    } else {
+        performCheckIn();
+    }
+};
+
+const performCheckIn = async () => {
+    if (!supabaseClient) { alert("Offline mode"); return; }
+
+    // Prevent double tap
+    const btn = document.getElementById('manualCheckInBtn');
+    if (btn) btn.disabled = true;
+
+    const { data, error } = await supabaseClient.from('gym_visits').insert({
+        user_id: appState.userId,
+        check_in: new Date().toISOString()
+    }).select().single();
+
+    if (btn) btn.disabled = false;
+
+    if (!error && data) {
+        alert("Checked In! Have a great workout!");
+        appState.activeVisit = data;
+        updateAttendanceUI();
+    } else {
+        alert(error ? error.message : "Error checking in");
+    }
+};
+
+const performCheckOut = async () => {
+    if (!supabaseClient) { alert("Offline mode"); return; }
+    if (!appState.activeVisit) return;
+
+    const btn = document.getElementById('manualCheckOutBtn');
+    if (btn) btn.disabled = true;
+
+    const checkOutTime = new Date();
+    const checkInTime = new Date(appState.activeVisit.check_in);
+    const diffMs = checkOutTime - checkInTime;
+    const durationMins = Math.round(diffMs / 60000); // minutes
+
+    const { error } = await supabaseClient.from('gym_visits').update({
+        check_out: checkOutTime.toISOString(),
+        duration_minutes: durationMins
+    }).eq('id', appState.activeVisit.id);
+
+    if (btn) btn.disabled = false;
+
+    if (!error) {
+        alert(`Checked Out! Session duration: ${durationMins}m`);
+        appState.activeVisit = null;
+        appState.todayTotalTime += durationMins;
+        updateAttendanceUI();
+    } else {
+        alert(error.message);
+    }
+};
+
+let html5QrcodeScanner = null;
+
+window.openQRScanner = () => {
+    document.getElementById('qrModal').classList.remove('hidden');
+    document.getElementById('qrModal').style.display = 'flex';
+
+    html5QrcodeScanner = new Html5Qrcode("qr-reader");
+    html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        handleQRScanSuccess,
+        (errorMessage) => { /* ignore per-frame errors */ }
+    ).catch(err => {
+        alert("Error starting QR scanner: " + err);
+        closeQRScanner();
+    });
+};
+
+window.closeQRScanner = () => {
+    if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().then(() => {
+            html5QrcodeScanner.clear();
+            document.getElementById('qrModal').classList.add('hidden');
+            document.getElementById('qrModal').style.display = 'none';
+        }).catch(err => console.error(err));
+    } else {
+        document.getElementById('qrModal').classList.add('hidden');
+        document.getElementById('qrModal').style.display = 'none';
+    }
+};
+
+const updateAttendanceUI = () => {
+    const statusEl = document.getElementById('attendanceStatus');
+    const timeEl = document.getElementById('attendanceTime');
+
+    if (statusEl) {
+        if (appState.activeVisit) {
+            const checkInTime = new Date(appState.activeVisit.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            // Using innerHTML to support <br>
+            statusEl.innerHTML = `ACTIVE <br> NOW <br> <span style="font-size:0.55rem; opacity:0.8;">${checkInTime}</span>`;
+            statusEl.style.color = "var(--success)";
+        } else {
+            statusEl.innerHTML = "NOT <br> CHECKED <br> IN";
+            statusEl.style.color = "var(--primary)";
+        }
+    }
+
+    if (timeEl) {
+        const h = Math.floor(appState.todayTotalTime / 60);
+        const m = appState.todayTotalTime % 60;
+        timeEl.textContent = `${h}h ${m}m`;
+    }
+
+    // Toggle Buttons
+    const inBtn = document.getElementById('manualCheckInBtn');
+    const outBtn = document.getElementById('manualCheckOutBtn');
+
+    if (inBtn && outBtn) {
+        if (appState.activeVisit) {
+            inBtn.classList.add('hidden');
+            inBtn.style.display = 'none';
+            outBtn.classList.remove('hidden');
+            outBtn.style.display = 'block';
+        } else {
+            inBtn.classList.remove('hidden');
+            inBtn.style.display = 'block';
+            outBtn.classList.add('hidden');
+            outBtn.style.display = 'none';
+        }
+    }
+
+    // Update Dashboard Login Time
+
+    // Update Dashboard Login Time
+    const dashTime = document.getElementById('totalLoginTime');
+    if (dashTime) {
+        const h = Math.floor(appState.todayTotalTime / 60);
+        const m = appState.todayTotalTime % 60;
+        dashTime.textContent = `${h}h ${m}m`;
+    }
+};
+
+// --- ACTIONS ---
+
+const addFood = async (name, carbs) => {
+    // Optimistic
+    const tempId = 'temp-' + Date.now();
+    appState.currentLog.food.push({ id: tempId, name, carbs: parseInt(carbs) });
+    updateUI();
+
+    if (supabaseClient) {
+        await supabaseClient.from('food_items').insert({
+            user_id: appState.userId,
+            date: appState.selectedDate,
+            name,
+            carbs: parseInt(carbs)
+        });
+        fetchCurrentLog().then(updateUI); // Refresh for real ID
+    }
+};
+
+const deleteFood = async (id) => {
+    if (!supabaseClient) return;
+    if (confirm("Delete this item?")) {
+        await supabaseClient.from('food_items').delete().eq('id', id);
+        fetchCurrentLog().then(updateUI);
+    }
+};
+
+const addExercise = async (name, equipmentVal, sets, reps) => {
+    let equipLabel = 'Bodyweight';
+    if (equipmentVal == '5') equipLabel = '5kg Dumbbell';
+    if (equipmentVal == '7.5') equipLabel = '7.5kg Dumbbell';
+
+    // Optimistic
+    appState.currentLog.exercises.push({ name, equipment: equipLabel, sets, reps });
+    appState.currentLog.didWorkout = true;
+    updateUI();
+
+    if (supabaseClient) {
+        const { error } = await supabaseClient.from('workout_sets').insert({
+            user_id: appState.userId,
+            date: appState.selectedDate,
+            name,
+            equipment: equipLabel,
+            sets,
+            reps
+        });
+
+        if (!error) {
+            await supabaseClient.from('daily_logs').upsert({
+                user_id: appState.userId,
+                date: appState.selectedDate,
+                did_workout: true
+            }, { onConflict: 'user_id, date' });
+
+            fetchHistoryKeys();
+            fetchCurrentLog().then(updateUI);
+        }
+    }
+};
+
+const deleteExercise = async (id) => {
+    if (!supabaseClient) return;
+    if (confirm("Delete this set?")) {
+        await supabaseClient.from('workout_sets').delete().eq('id', id);
+        // We technically need to check if day still has other workouts to update daily_logs, 
+        // but for simplicity we leave daily_log as true (history remains).
+        fetchCurrentLog().then(updateUI);
+    }
+};
+
+const updateProfile = async (w, h, a, c) => {
+    const weight = parseFloat(w);
+    const height = parseFloat(h);
+    const age = parseInt(a);
+    const carbGoal = parseInt(c);
+
+    appState.profile = { weight, height, age, carbGoal };
+    updateUI();
+
+    if (supabaseClient) {
+        const { error } = await supabaseClient.from('profiles').upsert({
+            user_id: appState.userId,
+            weight,
+            height,
+            age,
+            carb_goal: carbGoal,
+            updated_at: new Date()
+        });
+
+        if (!error) alert('Profile Saved!');
+        else alert('Error: ' + error.message);
+    }
+};
+
+// --- UI RENDERING ---
+
+window.navigateTo = (viewId) => {
+    console.log("Navigating to:", viewId);
+    document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
+    document.getElementById(viewId).classList.remove('hidden');
+
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    const lookup = { 'home': 0, 'track': 1, 'history': 2, 'photos': 3, 'profile': 4 };
+    const navItems = document.querySelectorAll('.nav-item');
+    if (navItems[lookup[viewId]]) navItems[lookup[viewId]].classList.add('active');
+
+    if (viewId === 'history') renderHistory();
+    if (viewId === 'profile') {
+        // Pre-fill profile
+        document.getElementById('profileWeight').value = appState.profile.weight;
+        document.getElementById('profileHeight').value = appState.profile.height;
+        document.getElementById('profileAge').value = appState.profile.age || 25;
+    }
+};
+
+window.toggleExerciseFields = () => {
+    const equip = document.getElementById('exDumbbell').value;
+    const lblSets = document.getElementById('lblSets');
+    const lblReps = document.getElementById('lblReps');
+
+    if (equip === 'Treadmill') {
+        lblSets.textContent = "Time (mins)";
+        lblReps.textContent = "Calories (kcal)";
+        document.getElementById('exName').placeholder = "e.g. Running, Walking";
+        document.getElementById('exName').value = "Cardio"; // Default
+    } else {
+        lblSets.textContent = "Sets";
+        lblReps.textContent = "Reps";
+        document.getElementById('exName').placeholder = "e.g. Bicep Curl";
+        if (document.getElementById('exName').value === "Cardio") document.getElementById('exName').value = "";
+    }
+};
+
+
+
+const updateUI = () => {
+    // Home Stats
+    // Home Stats
+    document.getElementById('weightDisplay').textContent = appState.profile.weight;
+    document.getElementById('streakDisplay').textContent = appState.historyKeys.length;
+
+    // Status
+    const statusIcon = document.getElementById('workoutCheckIcon');
+    if (statusIcon && appState.currentLog.didWorkout) {
+        statusIcon.style.background = 'var(--primary)';
+        statusIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="black" width="20" height="20"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
+    } else if (statusIcon) {
+        statusIcon.style.background = 'transparent';
+        statusIcon.innerHTML = '';
+    }
+
+    // Lists with Delete
+
+
+    document.getElementById('exerciseList').innerHTML = appState.currentLog.exercises.map(e => `
+        <div class="workout-item">
+            <div class="flex justify-between">
+                <span style="font-weight: 600;">${e.name}</span>
+                ${e.id ? `<button class="delete-btn" onclick="deleteExercise('${e.id}')">&times;</button>` : ''}
+            </div>
+            <div class="text-sm text-primary">
+                ${e.equipment === 'Treadmill'
+            ? `Treadmill • ${e.sets} mins • ${e.reps} kcal`
+            : `${e.equipment} • ${e.sets} sets x ${e.reps} reps`
+        }
+            </div>
+        </div>
+    `).join('');
+
+    const workoutCard = document.getElementById('workoutStatusCard');
+    if (workoutCard) {
+        workoutCard.style.display = appState.currentLog.didWorkout ? 'none' : 'block';
+    }
+};
+
+const renderHistory = () => {
+    const now = new Date();
+    // Use the selected date year/month if we want to browse history properly? 
+    // For now stick to current month heatmap for simplicity
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const mapEl = document.getElementById('monthHeatmap');
+    document.getElementById('historyMonthName').textContent = now.toLocaleDateString('en-US', { month: 'long' });
+
+    let html = '';
+    const activeDates = new Set(appState.historyKeys);
+
+    for (let i = 1; i <= daysInMonth; i++) {
+        const dayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+        const isActive = activeDates.has(dayStr);
+        // On click history day, jump to it?
+        html += `<div class="day-dot ${isActive ? 'active' : ''}" title="${dayStr}" onclick="jumpToDate('${dayStr}')">${i}</div>`;
+    }
+    mapEl.innerHTML = html;
+    document.getElementById('daysWorkedOutCount').textContent = activeDates.size;
+
+    // Recent logs
+    const historyList = document.getElementById('historyLogList');
+    // Merge historyKeys (workouts) and gymHistory keys
+    const allDates = new Set([...appState.historyKeys, ...Object.keys(appState.gymHistory)]);
+    const recent = [...allDates].sort().reverse().slice(0, 7);
+
+    historyList.innerHTML = recent.map(date => {
+        const gymTime = appState.gymHistory[date] ? `${Math.floor(appState.gymHistory[date] / 60)}h ${appState.gymHistory[date] % 60}m` : null;
+        const workedOut = appState.historyKeys.includes(date);
+
+        return `
+         <div class="card" style="padding: 16px; cursor: pointer; display: flex; flex-direction: column; gap: 5px;" onclick="jumpToDate('${date}')">
+            <div class="flex justify-between items-center">
+                <span style="font-weight: bold;">${date}</span>
+                <span class="text-primary text-sm">View &rarr;</span>
+            </div>
+            <div class="flex gap-4 text-sm text-muted">
+                ${workedOut ? '<span>✓ Workout Logged</span>' : ''}
+                ${gymTime ? `<span style="color: var(--accent);">Time: ${gymTime}</span>` : ''}
+                ${!workedOut && !gymTime ? '<span>No activity</span>' : ''}
+            </div>
+        </div>
+    `}).join('');
+};
+
+// Global helpers
+window.deleteFood = deleteFood;
+window.deleteExercise = deleteExercise;
+window.jumpToDate = (date) => {
+    appState.selectedDate = date;
+    document.getElementById('datePicker').value = date;
+    navigateTo('home'); // Go to dashboard to see that day
+    fetchCurrentLog().then(updateUI);
+};
+
+window.performCheckIn = performCheckIn;
+window.performCheckOut = performCheckOut;
+
+// Photos Logic
+let cameraStream = null;
+
+window.openCamera = async () => {
+    const modal = document.getElementById('cameraModal');
+    const video = document.getElementById('cameraStream');
+
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+    modal.style.zIndex = '9999';
+
+    try {
+        console.log("Requesting camera access...");
+        // Try environment first, but fallback to any video source
+        try {
+            cameraStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment' },
+                audio: false
+            });
+        } catch (e) {
+            console.warn("Environment camera failed, trying default...", e);
+            cameraStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false
+            });
+        }
+
+        console.log("Camera access granted.");
+        video.srcObject = cameraStream;
+        // Important: Muted is often required for autoplay permission
+        video.muted = true;
+        await video.play();
+    } catch (err) {
+        console.error("Camera Error Full Object:", err);
+        alert("Camera Error: " + (err.name || "Unknown") + " - " + err.message);
+        closeCamera();
+    }
+};
+
+window.closeCamera = () => {
+    const modal = document.getElementById('cameraModal');
+    const video = document.getElementById('cameraStream');
+
+    modal.style.display = 'none';
+    modal.classList.add('hidden');
+
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+    }
+    video.srcObject = null;
+};
+
+window.takePicture = () => {
+    const video = document.getElementById('cameraStream');
+    const canvas = document.getElementById('cameraCanvas');
+
+    if (!video.videoWidth) return; // Video not ready
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Stop camera immediately for UX
+    closeCamera();
+
+    // Convert to blob and upload
+    canvas.toBlob(async (blob) => {
+        if (!blob) return;
+
+        await uploadPhotoBlob(blob);
+    }, 'image/jpeg', 0.8);
+};
+
+const uploadPhotoBlob = async (blob) => {
+    const fileName = `${appState.userId}/${Date.now()}.jpg`;
+
+    if (!supabaseClient) { alert("Offline mode: Cannot upload."); return; }
+
+    // Upload to Storage
+    const { data, error } = await supabaseClient.storage.from('photos').upload(fileName, blob);
+
+    if (error) {
+        alert('Upload failed: ' + error.message);
+        return;
+    }
+
+    // Get Public URL
+    const { data: { publicUrl } } = supabaseClient.storage.from('photos').getPublicUrl(fileName);
+
+    // Save to DB
+    const { error: dbError } = await supabaseClient.from('progress_photos').insert({
+        user_id: appState.userId,
+        date: new Date().toISOString().split('T')[0],
+        photo_url: publicUrl
+    });
+
+    if (dbError) {
+        alert('DB Error: ' + dbError.message);
+    } else {
+        alert('Photo Saved for Progress Reel!');
+        fetchPhotos();
+    }
+};
+
+window.handlePhotoUpload = async (input) => {
+    if (input.files && input.files[0]) {
+        await uploadPhotoBlob(input.files[0]);
+    }
+};
+
+const deletePhoto = async (photoId, photoUrl) => {
+    if (!confirm("Are you sure you want to delete this photo?")) return;
+
+    // 1. Delete from DB
+    const { error: dbError } = await supabaseClient.from('progress_photos').delete().eq('id', photoId);
+
+    if (dbError) {
+        alert("Error deleting from DB: " + dbError.message);
+        return;
+    }
+
+    // 2. Delete from Storage
+    // Extract path from URL: .../photos/user_id/filename.jpg
+    const path = photoUrl.split('/photos/')[1];
+    if (path) {
+        const { error: storageError } = await supabaseClient.storage.from('photos').remove([path]);
+        if (storageError) console.error("Storage delete warning:", storageError);
+    }
+
+    // 3. Refresh
+    fetchPhotos();
+};
+
+window.deletePhoto = deletePhoto;
+
+const renderPhotos = () => {
+    const grid = document.getElementById('photoGrid');
+    if (grid) {
+        grid.innerHTML = appState.photos.map(p => `
+            <div style="position: relative; aspect-ratio: 1; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.3); overflow: hidden;">
+                <div onclick="openPhotoReel()" style="width: 100%; height: 100%; background-image: url('${p.photo_url}'); background-size: cover; cursor: pointer;"></div>
+                <button onclick="deletePhoto('${p.id}', '${p.photo_url}')" style="position: absolute; top: 5px; right: 5px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer;">&times;</button>
+            </div>
+        `).join('');
+    }
+};
+
+window.openPhotoReel = () => {
+    if (appState.photos.length === 0) { alert("No photos yet!"); return; }
+    appState.reelIndex = 0;
+    document.getElementById('reelModal').style.display = 'flex';
+    updateReelView();
+};
+
+window.closeReel = () => {
+    document.getElementById('reelModal').style.display = 'none';
+};
+
+window.finishWorkout = () => {
+    if (appState.currentLog.exercises.length === 0) {
+        alert("Log some exercises first!");
+        return;
+    }
+    // Logic to 'finalize' could go here (e.g. calc total volume)
+    // For now, we just give feedback and go home
+    alert("Great job! Workout logged for today.");
+    navigateTo('home');
+};
+
+window.nextReel = () => {
+    const sortedPhotos = [...appState.photos].sort((a, b) => new Date(a.date) - new Date(b.date));
+    if (appState.reelIndex < sortedPhotos.length - 1) {
+        appState.reelIndex++;
+        updateReelView();
+    }
+};
+
+window.prevReel = () => {
+    if (appState.reelIndex > 0) {
+        appState.reelIndex--;
+        updateReelView();
+    }
+};
+
+const updateReelView = () => {
+    const sortedPhotos = [...appState.photos].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const photo = sortedPhotos[appState.reelIndex];
+    if (photo) {
+        document.getElementById('reelImage').src = photo.photo_url;
+        document.getElementById('reelDate').textContent = photo.date;
+        document.getElementById('reelCounter').textContent = `${appState.reelIndex + 1} of ${sortedPhotos.length}`;
+    }
+};
+
+const resetApp = async () => {
+    if (confirm("Generate new User ID?")) {
+        localStorage.removeItem('ironTrack_userId');
+        window.location.reload();
+    }
+};
+window.resetApp = resetApp;
+
+// Events
+
+
+document.getElementById('exerciseForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    addExercise(document.getElementById('exName').value, document.getElementById('exDumbbell').value, document.getElementById('exSets').value, document.getElementById('exReps').value);
+    alert('Set logged!');
+});
+
+document.getElementById('profileForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    updateProfile(
+        document.getElementById('profileWeight').value,
+        document.getElementById('profileHeight').value,
+        document.getElementById('profileAge').value,
+        250
+    );
+});
+
+// Start
+initApp();
