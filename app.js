@@ -176,20 +176,30 @@ window.handleAuthSubmit = async (e) => {
             // 2. Proceed to Signup if login failed
             const { data, error } = await supabaseClient.auth.signUp({
                 email,
-                password
+                password,
+                options: {
+                    emailRedirectTo: window.location.href // Redirect back to this page
+                }
             });
             if (error) throw error;
 
             if (data.session) {
-                msg.textContent = "Success! Logging in...";
-                if (document.getElementById('setupBioCheck').checked) {
-                    await registerBiometric();
+                // Determine if session is active (auto-confirm enabled) or user needs to verify email
+                if (data.user && !data.user.confirmed_at) {
+                    msg.textContent = "Signup successful! Please verify your email to continue.";
+                } else {
+                    msg.textContent = "Success! Logging in...";
+                    if (document.getElementById('setupBioCheck').checked) {
+                        await registerBiometric();
+                    }
                 }
+            } else if (data.user && !data.session) {
+                // Typical for email confirmation required flow
+                msg.textContent = "Confirmation email sent to " + email + ". Please check your inbox (and spam folder).";
+                msg.style.color = "var(--success)";
             } else {
-                // Supabase security setting "User Enumeration Protection" hides "User already exists" errors
-                // by returning a fake success. We must inform the user of this possibility.
-                msg.textContent = "Verification email sent! (Note: If this email is already registered, please check your inbox for a login link or try logging in).";
-                msg.style.color = "var(--primary)";
+                // Fallback
+                msg.textContent = "Verification email sent! Please check your inbox.";
             }
         } else {
             const { data, error } = await supabaseClient.auth.signInWithPassword({
