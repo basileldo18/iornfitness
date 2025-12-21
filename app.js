@@ -1024,8 +1024,11 @@ window.deleteFood = deleteFood;
 window.deleteExercise = deleteExercise;
 window.jumpToDate = (date) => {
     appState.selectedDate = date;
-    document.getElementById('datePicker').value = date;
+    const dp = document.getElementById('datePicker');
+    if (dp) dp.value = date;
+
     navigateTo('home'); // Go to dashboard to see that day
+    window.scrollTo(0, 0); // Ensure we are at the top
     fetchCurrentLog().then(updateUI);
 };
 
