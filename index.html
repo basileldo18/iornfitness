@@ -364,7 +364,13 @@
                     style="background: rgba(255,255,255,0.2); border: none; padding: 15px; border-radius: 50%; color: white; width: 50px; height: 50px;">&times;</button>
                 <button onclick="takePicture()"
                     style="background: white; border: 5px solid rgba(255,255,255,0.5); padding: 0; border-radius: 50%; width: 80px; height: 80px;"></button>
-                <button style="width: 50px; height: 50px; visibility: hidden;"></button> <!-- Spacer -->
+                <button onclick="switchCamera()"
+                    style="background: rgba(255,255,255,0.2); border: none; padding: 15px; border-radius: 50%; color: white; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                        <path
+                            d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z" />
+                    </svg>
+                </button>
             </div>
         </div>
 

@@ -1161,41 +1161,75 @@ window.performCheckOut = performCheckOut;
 
 // Photos Logic
 let cameraStream = null;
+let currentFacingMode = 'environment'; // Default to back camera
+
+const startCameraStream = async () => {
+    const video = document.getElementById('cameraStream');
+
+    // Stop any existing stream first
+    if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+    }
+
+    try {
+        console.log(`Starting camera with mode: ${currentFacingMode}`);
+
+        // CONSTRAINTS: strict facingMode if possible, falling back is handled by browser usually,
+        // but explicit error handling is safer.
+        const constraints = {
+            video: {
+                facingMode: currentFacingMode,
+                width: { ideal: 1920 }, // Try for high res
+                height: { ideal: 1080 }
+            },
+            audio: false
+        };
+
+        cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        video.srcObject = cameraStream;
+        video.muted = true; // Required for autoplay on some mobile browsers
+        // Use Promise to catch play errors
+        await video.play().catch(e => console.error("Video play error:", e));
+
+    } catch (err) {
+        console.warn(`Failed to access ${currentFacingMode} camera:`, err);
+        // Fallback: If 'environment' fails, try 'user' (and vice-versa) or just any camera
+        if (currentFacingMode === 'environment') {
+            try {
+                console.log("Falling back to default/user camera...");
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                video.srcObject = cameraStream;
+                video.muted = true;
+                await video.play();
+                // Update state to match reality if possible (though we don't know for sure)
+                currentFacingMode = 'user';
+            } catch (fallbackErr) {
+                alert("Unable to access camera: " + fallbackErr.message);
+                closeCamera();
+            }
+        } else {
+            alert("Error accessing camera: " + err.message);
+            closeCamera();
+        }
+    }
+};
 
 window.openCamera = async () => {
     const modal = document.getElementById('cameraModal');
-    const video = document.getElementById('cameraStream');
-
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
     modal.style.zIndex = '9999';
 
-    try {
-        console.log("Requesting camera access...");
-        // Try environment first, but fallback to any video source
-        try {
-            cameraStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' },
-                audio: false
-            });
-        } catch (e) {
-            console.warn("Environment camera failed, trying default...", e);
-            cameraStream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: false
-            });
-        }
+    // Reset to environment (back) by default for fitness photos
+    currentFacingMode = 'environment';
+    await startCameraStream();
+};
 
-        console.log("Camera access granted.");
-        video.srcObject = cameraStream;
-        // Important: Muted is often required for autoplay permission
-        video.muted = true;
-        await video.play();
-    } catch (err) {
-        console.error("Camera Error Full Object:", err);
-        alert("Camera Error: " + (err.name || "Unknown") + " - " + err.message);
-        closeCamera();
-    }
+window.switchCamera = async () => {
+    // Toggle Mode
+    currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
+    await startCameraStream();
 };
 
 window.closeCamera = () => {
