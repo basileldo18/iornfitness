@@ -335,7 +335,15 @@ const updateBioStatus = () => {
 
 const fetchProfile = async () => {
     if (!supabaseClient) return;
-    const { data } = await supabaseClient.from('profiles').select('*').eq('user_id', appState.userId).single();
+
+    // safe select
+    const { data, error } = await supabaseClient.from('profiles').select('*').eq('user_id', appState.userId).maybeSingle();
+
+    if (error) {
+        console.error("Error fetching profile:", error);
+        return;
+    }
+
     if (data) {
         appState.profile = {
             weight: parseFloat(data.weight),
@@ -344,8 +352,31 @@ const fetchProfile = async () => {
             carbGoal: parseInt(data.carb_goal)
         };
     } else {
-        // Init profile if none
+        // Init profile if none (default)
+        // Ensure we don't spam 400s if schema is missing, but we try once
         updateProfile(70, 175, 25, 250);
+    }
+};
+
+const updateAnalyticsUI = () => {
+    // Safety check for elements
+    const dGym = document.getElementById('statDayGym');
+    const mGym = document.getElementById('statMonthGym');
+    const yGym = document.getElementById('statYearGym');
+    const dCardio = document.getElementById('statDayCardio');
+    const mCardio = document.getElementById('statMonthCardio');
+    const yCardio = document.getElementById('statYearCardio');
+
+    if (appState.gymStats && dGym) {
+        dGym.textContent = formatTimeStats(appState.gymStats.day);
+        mGym.textContent = formatTimeStats(appState.gymStats.month);
+        yGym.textContent = formatTimeStats(appState.gymStats.year);
+    }
+
+    if (appState.cardioStats && dCardio) {
+        dCardio.textContent = formatTimeStats(appState.cardioStats.day);
+        mCardio.textContent = formatTimeStats(appState.cardioStats.month);
+        yCardio.textContent = formatTimeStats(appState.cardioStats.year);
     }
 };
 
@@ -870,16 +901,24 @@ const formatTimeStats = (mins) => {
 };
 
 const updateAnalyticsUI = () => {
-    if (appState.gymStats) {
-        document.getElementById('statDayGym').textContent = formatTimeStats(appState.gymStats.day);
-        document.getElementById('statMonthGym').textContent = formatTimeStats(appState.gymStats.month);
-        document.getElementById('statYearGym').textContent = formatTimeStats(appState.gymStats.year);
+    // Safety check for elements
+    const dGym = document.getElementById('statDayGym');
+    const mGym = document.getElementById('statMonthGym');
+    const yGym = document.getElementById('statYearGym');
+    const dCardio = document.getElementById('statDayCardio');
+    const mCardio = document.getElementById('statMonthCardio');
+    const yCardio = document.getElementById('statYearCardio');
+
+    if (appState.gymStats && dGym) {
+        dGym.textContent = formatTimeStats(appState.gymStats.day);
+        mGym.textContent = formatTimeStats(appState.gymStats.month);
+        yGym.textContent = formatTimeStats(appState.gymStats.year);
     }
 
-    if (appState.cardioStats) {
-        document.getElementById('statDayCardio').textContent = formatTimeStats(appState.cardioStats.day);
-        document.getElementById('statMonthCardio').textContent = formatTimeStats(appState.cardioStats.month);
-        document.getElementById('statYearCardio').textContent = formatTimeStats(appState.cardioStats.year);
+    if (appState.cardioStats && dCardio) {
+        dCardio.textContent = formatTimeStats(appState.cardioStats.day);
+        mCardio.textContent = formatTimeStats(appState.cardioStats.month);
+        yCardio.textContent = formatTimeStats(appState.cardioStats.year);
     }
 };
 
