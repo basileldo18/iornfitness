@@ -184,6 +184,33 @@
                     <span class="equip-tag">3x 7.5kg Dumbbells</span>
                 </div>
             </div>
+
+            <!-- Analytics -->
+            <div class="card">
+                <h3>Time Investment</h3>
+                <div
+                    style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 15px; text-align: center;">
+                    <!-- Headers -->
+                    <span class="text-xs text-muted" style="text-align: left;">PERIOD</span>
+                    <span class="text-xs text-muted">GYM TIME</span>
+                    <span class="text-xs text-muted">TREADMILL</span>
+
+                    <!-- Day -->
+                    <span style="text-align: left; font-weight: 600;">Today</span>
+                    <span id="statDayGym" class="text-primary">-</span>
+                    <span id="statDayCardio" class="text-success">-</span>
+
+                    <!-- Month -->
+                    <span style="text-align: left; font-weight: 600;">Month</span>
+                    <span id="statMonthGym" class="text-primary">-</span>
+                    <span id="statMonthCardio" class="text-success">-</span>
+
+                    <!-- Year -->
+                    <span style="text-align: left; font-weight: 600;">Year</span>
+                    <span id="statYearGym" class="text-primary">-</span>
+                    <span id="statYearCardio" class="text-success">-</span>
+                </div>
+            </div>
         </section>
 
 
@@ -281,6 +308,20 @@
                     </div>
                     <svg viewBox="0 0 24 24" fill="white" width="32" height="32">
                         <path d="M8 5v14l11-7z" />
+                    </svg>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top: 10px; cursor: pointer; border: 1px solid var(--primary);"
+                onclick="downloadReelVideo()">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3 class="text-primary">Download Video Reel</h3>
+                        <p class="text-sm text-muted">Save your transformation as a video file.</p>
+                    </div>
+                    <svg viewBox="0 0 24 24" fill="var(--primary)" width="32" height="32">
+                        <path
+                            d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4zM14 13h-3v3H9v-3H6v-2h3V8h2v3h3v2z" />
                     </svg>
                 </div>
             </div>
@@ -389,7 +430,7 @@
 
     </main>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=2.0"></script>
 </body>
 
 </html>
