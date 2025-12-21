@@ -819,11 +819,16 @@ window.toggleExerciseFields = () => {
         lblReps.textContent = "Calories (kcal)";
         document.getElementById('exName').placeholder = "e.g. Running, Walking";
         document.getElementById('exName').value = "Cardio"; // Default
+    } else if (equip === 'PushUp') {
+        lblSets.textContent = "Sets";
+        lblReps.textContent = "Reps";
+        document.getElementById('exName').value = "Push Up";
     } else {
         lblSets.textContent = "Sets";
         lblReps.textContent = "Reps";
         document.getElementById('exName').placeholder = "e.g. Bicep Curl";
-        if (document.getElementById('exName').value === "Cardio") document.getElementById('exName').value = "";
+        const currentName = document.getElementById('exName').value;
+        if (currentName === "Cardio" || currentName === "Push Up") document.getElementById('exName').value = "";
     }
 };
 
