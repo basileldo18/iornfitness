@@ -85,7 +85,10 @@ const handleSessionOk = async (userId) => {
         fetchHistoryKeys(),
         fetchPhotos(),
         fetchLastVisit(),
-        fetchGymHistory()
+        fetchPhotos(),
+        fetchLastVisit(),
+        fetchGymHistory(), // This now handles the gym time aggregation
+        fetchCardioStats() // New function
     ]);
     updateUI();
 };
@@ -208,11 +211,15 @@ window.registerBiometric = async () => {
         if (credential) {
             console.log("Credential Created:", credential);
             localStorage.setItem('ironTrack_bioRegistered', 'true');
-            localStorage.setItem('ironTrack_bioID', credential.id); // In real app, send to server
+            localStorage.setItem('ironTrack_bioID', credential.id);
+            // Save the current user ID to restore later
+            if (appState.userId) {
+                localStorage.setItem('ironTrack_bioUserID', appState.userId);
+            }
+
             alert("Biometric Registered Successfully!");
             updateBioStatus();
 
-            // If we are in the auth screen, we might want to auto-login (simulated)
             if (!appState.userId && isSignup) {
                 // user is technically signed in via supabase immediately after signup usually
             }
@@ -247,28 +254,16 @@ window.handleBiometricLogin = async () => {
 
         if (assertion) {
             msg.textContent = "Biometric Verified!";
-            // In a real app, verify assertion on server to get session.
-            // Here we rely on previous session or mocked 'offline' access for demo functionality if real session expired.
 
-            // Allow access if keys match (Simplified)
             if (assertion.id === localStorage.getItem('ironTrack_bioID')) {
-                alert("Identity Verified via Biometrics!");
+                // Restore the specific user ID associated with this biometric
+                const savedUserID = localStorage.getItem('ironTrack_bioUserID');
 
-                // If we have a cached supbase session, use it. If not, this is strictly a Client-Side verify 
-                // that doesn't grant DB access without the token. 
-                // We will attempt to reload which might pick up the session? 
-                // Or just show app if we are treating this as an 'App Lock'
-
-                if (supabaseClient) {
-                    const { data: { session } } = await supabaseClient.auth.getSession();
-                    if (session) {
-                        handleSessionOk(session.user.id);
-                    } else {
-                        alert("Note: For full database access, please login with password once to refresh your session token.");
-                        // Fallback to offline/limited
-                        handleSessionOk('bio_verified_user');
-                    }
+                if (savedUserID) {
+                    alert("Welcome back!");
+                    handleSessionOk(savedUserID);
                 } else {
+                    // Fallback if no ID was saved (legacy/edge case)
                     handleSessionOk('bio_verified_user');
                 }
             } else {
@@ -355,20 +350,69 @@ const fetchPhotos = async () => {
 const fetchGymHistory = async () => {
     if (!supabaseClient) return;
 
-    // Fetch all visits to aggregate (optimization: fetch only recent months if needed)
+    // Fetch all visits
     const { data } = await supabaseClient.from('gym_visits')
         .select('check_in, duration_minutes')
         .eq('user_id', appState.userId)
         .not('duration_minutes', 'is', null);
 
     if (data) {
-        const history = {};
+        const history = {}; // Date -> Mins
+        const now = new Date();
+        const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
+        const currentYear = now.getFullYear().toString();
+        const today = now.toISOString().split('T')[0];
+
+        let daySum = 0;
+        let monthSum = 0;
+        let yearSum = 0;
+
         data.forEach(v => {
-            const date = v.check_in.split('T')[0];
-            if (!history[date]) history[date] = 0;
-            history[date] += v.duration_minutes;
+            const dayStr = v.check_in.split('T')[0];
+            const mins = v.duration_minutes || 0;
+
+            if (!history[dayStr]) history[dayStr] = 0;
+            history[dayStr] += mins;
+
+            // Aggregates
+            if (dayStr === today) daySum += mins;
+            if (dayStr.startsWith(currentMonth)) monthSum += mins;
+            if (dayStr.startsWith(currentYear)) yearSum += mins;
         });
+
         appState.gymHistory = history;
+        appState.gymStats = { day: daySum, month: monthSum, year: yearSum };
+    }
+};
+
+const fetchCardioStats = async () => {
+    if (!supabaseClient) return;
+
+    // Fetch treadmill sets
+    const { data } = await supabaseClient.from('workout_sets')
+        .select('date, sets') // sets = duration in mins for treadmill
+        .eq('user_id', appState.userId)
+        .eq('equipment', 'Treadmill');
+
+    if (data) {
+        const now = new Date();
+        const currentMonth = now.toISOString().slice(0, 7);
+        const currentYear = now.getFullYear().toString();
+        const today = now.toISOString().split('T')[0];
+
+        let daySum = 0;
+        let monthSum = 0;
+        let yearSum = 0;
+
+        data.forEach(d => {
+            const mins = parseInt(d.sets) || 0;
+            if (d.date === today) daySum += mins;
+            if (d.date.startsWith(currentMonth)) monthSum += mins;
+            if (d.date.startsWith(currentYear)) yearSum += mins;
+        });
+
+        appState.cardioStats = { day: daySum, month: monthSum, year: yearSum };
+        updateAnalyticsUI();
     }
 };
 
@@ -467,6 +511,7 @@ const performCheckOut = async () => {
         appState.activeVisit = null;
         appState.todayTotalTime += durationMins;
         updateAttendanceUI();
+        fetchGymHistory().then(updateAnalyticsUI);
     } else {
         alert(error.message);
     }
@@ -610,6 +655,7 @@ const addExercise = async (name, equipmentVal, sets, reps) => {
 
             fetchHistoryKeys();
             fetchCurrentLog().then(updateUI);
+            if (equipmentVal === 'Treadmill' || equipmentVal == 'Treadmill') fetchCardioStats(); // Refresh stats
         }
     }
 };
@@ -775,7 +821,30 @@ const renderHistory = () => {
     `}).join('');
 };
 
-// Global helpers
+// Analytics UI
+const formatTimeStats = (mins) => {
+    if (!mins) return '0m';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+};
+
+const updateAnalyticsUI = () => {
+    if (appState.gymStats) {
+        document.getElementById('statDayGym').textContent = formatTimeStats(appState.gymStats.day);
+        document.getElementById('statMonthGym').textContent = formatTimeStats(appState.gymStats.month);
+        document.getElementById('statYearGym').textContent = formatTimeStats(appState.gymStats.year);
+    }
+
+    if (appState.cardioStats) {
+        document.getElementById('statDayCardio').textContent = formatTimeStats(appState.cardioStats.day);
+        document.getElementById('statMonthCardio').textContent = formatTimeStats(appState.cardioStats.month);
+        document.getElementById('statYearCardio').textContent = formatTimeStats(appState.cardioStats.year);
+    }
+};
+
+window.updateAnalyticsUI = updateAnalyticsUI; // Expose if needed
 window.deleteFood = deleteFood;
 window.deleteExercise = deleteExercise;
 window.jumpToDate = (date) => {
