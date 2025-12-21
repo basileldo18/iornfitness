@@ -187,7 +187,16 @@ window.handleAuthSubmit = async (e) => {
         }
     } catch (err) {
         console.error("Auth Error:", err);
-        msg.textContent = "Error: " + (err.error_description || err.message);
+
+        let displayMsg = "Error: " + (err.error_description || err.message);
+
+        // Friendly error for existing user
+        if (displayMsg.toLowerCase().includes("already registered") || displayMsg.toLowerCase().includes("unique constraint")) {
+            displayMsg = "This email is already registered. Please login instead.";
+        }
+
+        msg.textContent = displayMsg;
+        msg.style.color = "var(--danger)";
     }
 };
 
