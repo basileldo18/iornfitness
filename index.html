@@ -378,10 +378,11 @@
             <div class="card" style="border-color: var(--danger);">
                 <h3>Danger Zone</h3>
                 <p class="text-sm text-muted" style="margin-bottom: 10px;">Clear all local data and start fresh.</p>
-                <div class="flex gap-2">
+                <div class="flex gap-2" style="flex-wrap: wrap;">
                     <button class="btn" style="background: #333; color: white;" onclick="handleLogout()">Logout</button>
-                    <button class="btn" style="background: var(--danger); color: white;" onclick="resetApp()">Reset All
-                        Data</button>
+                    <!-- <button class="btn" style="background: var(--danger); color: white;" onclick="resetApp()">Reset Local</button> -->
+                    <button class="btn" style="background: darkred; color: white;" onclick="deleteAccount()">Delete
+                        Account</button>
                 </div>
             </div>
         </section>

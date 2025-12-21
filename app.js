@@ -970,12 +970,42 @@ const updateReelView = () => {
 };
 
 const resetApp = async () => {
-    if (confirm("Generate new User ID?")) {
-        localStorage.removeItem('ironTrack_userId');
+    if (confirm("Reset local app state?")) {
+        localStorage.clear();
         window.location.reload();
     }
 };
 window.resetApp = resetApp;
+
+window.deleteAccount = async () => {
+    if (!confirm("Are you sure you want to PERMANENTLY DELETE your account? This cannot be undone.")) return;
+    if (!confirm("Really? All your data (photos, workouts, history) will be lost.")) return;
+
+    if (!supabaseClient) {
+        alert("Offline: Cannot delete cloud account.");
+        return;
+    }
+
+    const userId = appState.userId;
+
+    try {
+        // Delete data from all tables manually (Cascade is safer if set up in SQL, but explicit here for safety)
+        await supabaseClient.from('progress_photos').delete().eq('user_id', userId);
+        await supabaseClient.from('workout_sets').delete().eq('user_id', userId);
+        await supabaseClient.from('food_items').delete().eq('user_id', userId);
+        await supabaseClient.from('daily_logs').delete().eq('user_id', userId);
+        await supabaseClient.from('gym_visits').delete().eq('user_id', userId);
+        await supabaseClient.from('profiles').delete().eq('user_id', userId);
+
+        alert("Account data deleted. logging out...");
+        await supabaseClient.auth.signOut();
+        window.location.reload();
+
+    } catch (err) {
+        console.error("Delete Error:", err);
+        alert("Error deleting data: " + err.message);
+    }
+};
 
 // Events
 
