@@ -733,6 +733,20 @@ const updateAttendanceUI = () => {
         const m = appState.todayTotalTime % 60;
         dashTime.textContent = `${h}h ${m}m`;
     }
+
+    // Disable/Enable Log Tab based on attendance
+    const logBtn = document.getElementById('navLogBtn');
+    if (logBtn) {
+        if (appState.activeVisit) {
+            logBtn.disabled = false;
+            logBtn.style.opacity = '1';
+            logBtn.style.filter = 'none';
+        } else {
+            logBtn.disabled = true;
+            logBtn.style.opacity = '0.3';
+            logBtn.style.filter = 'grayscale(100%)';
+        }
+    }
 };
 
 // --- ACTIONS ---
