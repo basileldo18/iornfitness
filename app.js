@@ -1047,14 +1047,70 @@ const refreshAnalyticsUI = () => {
 window.refreshAnalyticsUI = refreshAnalyticsUI; // Expose if needed
 window.deleteFood = deleteFood;
 window.deleteExercise = deleteExercise;
+// This function renders the Day Detail view content
+const renderDayDetail = () => {
+    document.getElementById('detailDateHeader').textContent = appState.selectedDate;
+
+    // 1. Session Info
+    const sessionList = document.getElementById('detailSessionList');
+    if (sessionList) {
+        if (appState.currentLog.visits && appState.currentLog.visits.length > 0) {
+            sessionList.innerHTML = appState.currentLog.visits.map(v => {
+                const inTime = new Date(v.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const outTime = v.check_out ? new Date(v.check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Active';
+                const dur = v.duration_minutes ? `${v.duration_minutes}m` : '-';
+                return `
+                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px;">
+                    <div class="flex-col">
+                        <span class="text-xs text-muted">LOGIN</span>
+                        <span class="font-bold">${inTime}</span>
+                    </div>
+                    <div class="flex-col items-center">
+                         <span class="text-primary text-sm">${dur}</span>
+                         <span>&rarr;</span>
+                    </div>
+                    <div class="flex-col items-end">
+                        <span class="text-xs text-muted">LOGOUT</span>
+                        <span class="font-bold">${outTime}</span>
+                    </div>
+                </div>`;
+            }).join('');
+        } else {
+            sessionList.innerHTML = '<p class="text-muted text-sm">No gym sessions recorded for this day.</p>';
+        }
+    }
+
+    // 2. Workout Log
+    const workoutList = document.getElementById('detailWorkoutList');
+    if (workoutList) {
+        if (appState.currentLog.exercises && appState.currentLog.exercises.length > 0) {
+            workoutList.innerHTML = appState.currentLog.exercises.map(e => `
+                <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px;">
+                     <div style="display: flex; justify-content: space-between;">
+                        <span style="font-weight: 600;">${e.name}</span>
+                        <span class="text-xs text-muted">${e.equipment}</span>
+                     </div>
+                     <div class="text-sm text-primary" style="margin-top: 4px;">
+                        ${e.equipment === 'Treadmill'
+                    ? `${e.sets} mins • ${e.reps} kcal`
+                    : `${e.sets} sets x ${e.reps} reps`}
+                     </div>
+                </div>
+            `).join('');
+        } else {
+            workoutList.innerHTML = '<p class="text-muted text-sm">No exercises logged.</p>';
+        }
+    }
+};
+
 window.jumpToDate = (date) => {
     appState.selectedDate = date;
-    const dp = document.getElementById('datePicker');
-    if (dp) dp.value = date;
-
-    navigateTo('home'); // Go to dashboard to see that day
-    window.scrollTo(0, 0); // Ensure we are at the top
-    fetchCurrentLog().then(updateUI);
+    navigateTo('day-detail'); // Go to new Detail View
+    window.scrollTo(0, 0);
+    fetchCurrentLog().then(() => {
+        updateUI();
+        renderDayDetail(); // Explicitly render detail view
+    });
 };
 
 window.performCheckIn = performCheckIn;

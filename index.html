@@ -447,6 +447,35 @@
             </div>
         </section>
 
+        <!-- DAY DETAIL VIEW (New) -->
+        <section id="day-detail" class="view hidden">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                <button onclick="navigateTo('history')"
+                    style="background: none; border: none; color: white; font-size: 1.5rem;">&larr;</button>
+                <h2 id="detailDateHeader" style="margin: 0;">Date</h2>
+            </div>
+
+            <!-- Session Info -->
+            <div class="card">
+                <h3>Gym Session</h3>
+                <div id="detailSessionList" style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Populated by JS -->
+                    <p class="text-muted text-sm">No session data found.</p>
+                </div>
+            </div>
+
+            <br>
+
+            <!-- Workout Log -->
+            <div class="card">
+                <h3>Workout Log</h3>
+                <div id="detailWorkoutList" style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Populated by JS -->
+                    <p class="text-muted text-sm">No exercises logged.</p>
+                </div>
+            </div>
+        </section>
+
     </main>
 
     <script src="app.js?v=2.0"></script>
