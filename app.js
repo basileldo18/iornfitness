@@ -160,6 +160,20 @@ window.handleAuthSubmit = async (e) => {
 
     try {
         if (isSignup) {
+            // 1. Try to login first! (In case account exists and password matches)
+            const { data: loginData, error: loginError } = await supabaseClient.auth.signInWithPassword({
+                email,
+                password
+            });
+
+            if (!loginError && loginData && loginData.session) {
+                alert("You already have an account! Logging you in...");
+                msg.textContent = "Account exists! Logging in...";
+                // Auth listener handles the rest
+                return;
+            }
+
+            // 2. Proceed to Signup if login failed
             const { data, error } = await supabaseClient.auth.signUp({
                 email,
                 password
@@ -168,14 +182,14 @@ window.handleAuthSubmit = async (e) => {
 
             if (data.session) {
                 msg.textContent = "Success! Logging in...";
-
-                // Check if they wanted bio
                 if (document.getElementById('setupBioCheck').checked) {
                     await registerBiometric();
                 }
-                // The onAuthStateChange listener will handle the redirection
             } else {
-                msg.textContent = "Sign up successful! Please check your email for the confirmation link.";
+                // Supabase security setting "User Enumeration Protection" hides "User already exists" errors
+                // by returning a fake success. We must inform the user of this possibility.
+                msg.textContent = "Verification email sent! (Note: If this email is already registered, please check your inbox for a login link or try logging in).";
+                msg.style.color = "var(--primary)";
             }
         } else {
             const { data, error } = await supabaseClient.auth.signInWithPassword({
