@@ -406,25 +406,58 @@ const updateBioStatus = () => {
 const fetchProfile = async () => {
     if (!supabaseClient) return;
 
-    // safe select
-    const { data, error } = await supabaseClient.from('profiles').select('*').eq('user_id', appState.userId).maybeSingle();
+    console.log("Fetching profile for User:", appState.userId);
 
-    if (error) {
-        console.error("Error fetching profile:", error);
-        return;
-    }
+    try {
+        const { data, error } = await supabaseClient.from('profiles').select('*').eq('user_id', appState.userId).maybeSingle();
 
-    if (data) {
-        appState.profile = {
-            weight: parseFloat(data.weight),
-            height: parseFloat(data.height),
-            age: data.age ? parseInt(data.age) : 25,
-            carbGoal: parseInt(data.carb_goal)
-        };
-    } else {
-        // Init profile if none (default)
-        // Ensure we don't spam 400s if schema is missing, but we try once
-        updateProfile(70, 175, 25, 250);
+        if (error) {
+            console.error("Error fetching profile:", error);
+
+        }
+
+        if (data) {
+            console.log("Profile data from DB:", data);
+            appState.profile = {
+                weight: data.weight ? parseFloat(data.weight) : 70,
+                height: data.height ? parseFloat(data.height) : 175,
+                age: data.age ? parseInt(data.age) : 25,
+                carbGoal: data.carb_goal ? parseInt(data.carb_goal) : 250
+            };
+            console.log("Profile loaded into appState:", appState.profile);
+
+
+            // Update profile form fields if profile view is currently visible
+            const profileView = document.getElementById('profile');
+            if (profileView && !profileView.classList.contains('hidden')) {
+                document.getElementById('profileWeight').value = appState.profile.weight;
+                document.getElementById('profileHeight').value = appState.profile.height;
+                document.getElementById('profileAge').value = appState.profile.age;
+            }
+        } else {
+            // No profile found, create a default profile in the database
+            console.log("No profile found in DB, creating default profile.");
+            appState.profile = { weight: 70, height: 175, age: 25, carbGoal: 250 };
+
+
+            // Auto-create default profile
+            const { error: createError } = await supabaseClient.from('profiles').insert({
+                user_id: appState.userId,
+                weight: 70,
+                height: 175,
+                age: 25,
+                carb_goal: 250
+            });
+
+            if (createError) {
+                console.error("Error creating default profile:", createError);
+            } else {
+                console.log("Default profile created successfully");
+            }
+        }
+    } catch (e) {
+        console.error("Fetch Profile Exception:", e);
+
     }
 };
 
@@ -821,15 +854,31 @@ const deleteExercise = async (id) => {
 };
 
 const updateProfile = async (w, h, a, c) => {
-    const weight = parseFloat(w);
-    const height = parseFloat(h);
-    const age = parseInt(a);
-    const carbGoal = parseInt(c);
+    const weight = w ? parseFloat(w) : 70;
+    const height = h ? parseFloat(h) : 175;
+    const age = a ? parseInt(a) : 25;
+    const carbGoal = c ? parseInt(c) : 250;
+
+    console.log("Saving profile with values:", { weight, height, age, carbGoal });
+
+    // Safety check for NaNs
+    if (isNaN(weight) || isNaN(height) || isNaN(age)) {
+        alert("Please enter valid numbers for your profile.");
+        return;
+    }
 
     appState.profile = { weight, height, age, carbGoal };
+    console.log("Updated appState.profile:", appState.profile);
+
+    // Save locally immediately
+    localStorage.setItem('ironTrack_profile_' + appState.userId, JSON.stringify(appState.profile));
+
     updateUI();
 
     if (supabaseClient) {
+        console.log("Saving profile to database for User:", appState.userId);
+
+        // Try full save first
         const { error } = await supabaseClient.from('profiles').upsert({
             user_id: appState.userId,
             weight,
@@ -839,8 +888,34 @@ const updateProfile = async (w, h, a, c) => {
             updated_at: new Date()
         });
 
-        if (!error) alert('Profile Saved!');
-        else alert('Error: ' + error.message);
+        if (error) {
+            console.warn("First save attempt failed:", error.message);
+
+            // If error is about the 'age' column missing, try saving without it
+            if (error.message.includes("age") || error.message.includes("column")) {
+                const { error: error2 } = await supabaseClient.from('profiles').upsert({
+                    user_id: appState.userId,
+                    weight,
+                    height,
+                    // age omitted
+                    carb_goal: carbGoal,
+                    updated_at: new Date()
+                });
+
+                if (error2) {
+                    alert('SAVE FAILED (Retry also failed): ' + error2.message + "\n\nPlease check your internet connection.");
+                } else {
+                    alert('Profile Saved! (Note: Age field could not be saved due to database schema)');
+                }
+            } else {
+                alert('SAVE FAILED: ' + error.message);
+            }
+        } else {
+            console.log("Profile saved successfully to database!");
+            alert('Profile Saved Successfully!\n\nWeight: ' + weight + 'kg\nHeight: ' + height + 'cm\nAge: ' + age + ' years');
+        }
+    } else {
+        alert("Offline Mode: Profile saved locally only.");
     }
 };
 
@@ -852,17 +927,34 @@ window.navigateTo = (viewId) => {
     document.getElementById(viewId).classList.remove('hidden');
 
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-    const lookup = { 'home': 0, 'track': 1, 'history': 2, 'photos': 3, 'profile': 4 };
+    const lookup = { 'home': 0, 'track': 1, 'tutorials': 2, 'history': 3, 'photos': 4, 'profile': 5 };
     const navItems = document.querySelectorAll('.nav-item');
     if (navItems[lookup[viewId]]) navItems[lookup[viewId]].classList.add('active');
 
+    if (viewId === 'tutorials') {
+        console.log('🧭 Navigating to tutorials, calling renderTutorialLibrary...');
+        window.renderTutorialLibrary();
+    }
     if (viewId === 'history') renderHistory();
     if (viewId === 'profile') {
-        // Pre-fill profile
-        document.getElementById('profileWeight').value = appState.profile.weight;
-        document.getElementById('profileHeight').value = appState.profile.height;
+        console.log("Navigating to profile view. Current appState.profile:", appState.profile);
+
+        // Pre-fill profile with current state
+        document.getElementById('profileWeight').value = appState.profile.weight || 70;
+        document.getElementById('profileHeight').value = appState.profile.height || 175;
         document.getElementById('profileAge').value = appState.profile.age || 25;
         updateBioStatus();
+
+        // Refresh from DB to ensure we have latest data
+        fetchProfile().then(() => {
+            // Update inputs if still on profile view
+            if (!document.getElementById('profile').classList.contains('hidden')) {
+                console.log("Profile fetched. Updating form with:", appState.profile);
+                document.getElementById('profileWeight').value = appState.profile.weight || 70;
+                document.getElementById('profileHeight').value = appState.profile.height || 175;
+                document.getElementById('profileAge').value = appState.profile.age || 25;
+            }
+        });
     }
 };
 
@@ -896,6 +988,19 @@ const updateUI = () => {
     // Home Stats
     document.getElementById('weightDisplay').textContent = appState.profile.weight;
     document.getElementById('streakDisplay').textContent = appState.historyKeys.length;
+
+    // Update Profile Form Fields - ALWAYS sync with appState.profile
+    const profileWeightField = document.getElementById('profileWeight');
+    const profileHeightField = document.getElementById('profileHeight');
+    const profileAgeField = document.getElementById('profileAge');
+
+    if (profileWeightField && profileHeightField && profileAgeField) {
+        // Always update fields to keep them in sync with appState.profile
+        profileWeightField.value = appState.profile.weight || 70;
+        profileHeightField.value = appState.profile.height || 175;
+        profileAgeField.value = appState.profile.age || 25;
+        console.log("✓ Profile fields synced:", appState.profile);
+    }
 
     // Day Summary Log (Login/Logout)
     const daySummaryCard = document.getElementById('daySummaryCard');
@@ -961,14 +1066,21 @@ const updateUI = () => {
             homeLogCard.style.display = 'block';
             homeLogList.innerHTML = appState.currentLog.exercises.map(e => `
                 <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px;">
-                     <div style="display: flex; justify-content: space-between;">
-                        <span style="font-weight: 600;">${e.name}</span>
-                        <span class="text-xs text-muted">${e.equipment}</span>
-                     </div>
-                     <div class="text-sm text-primary" style="margin-top: 4px;">
-                        ${e.equipment === 'Treadmill'
+                     <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="flex: 1;">
+                            <span style="font-weight: 600;">${e.name}</span>
+                            <div class="text-sm text-primary" style="margin-top: 4px;">
+                                ${e.equipment === 'Treadmill'
                     ? `${e.sets} mins • ${e.reps} kcal`
                     : `${e.sets} sets x ${e.reps} reps`}
+                            </div>
+                        </div>
+                        <button onclick="openTutorial('${e.name}')" 
+                            style="background: rgba(204, 254, 30, 0.15); border: 1px solid var(--primary); color: var(--primary); padding: 8px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap; margin-left: 10px; transition: all 0.2s;" 
+                            onmouseover="this.style.background='var(--primary)'; this.style.color='black';" 
+                            onmouseout="this.style.background='rgba(204, 254, 30, 0.15)'; this.style.color='var(--primary)';">
+                            📖 Tutorial
+                        </button>
                      </div>
                 </div>
             `).join('');
@@ -993,14 +1105,24 @@ const updateUI = () => {
     document.getElementById('exerciseList').innerHTML = appState.currentLog.exercises.map(e => `
         <div class="workout-item">
             <div class="flex justify-between">
-                <span style="font-weight: 600;">${e.name}</span>
-                ${e.id ? `<button class="delete-btn" onclick="deleteExercise('${e.id}')">&times;</button>` : ''}
-            </div>
-            <div class="text-sm text-primary">
-                ${e.equipment === 'Treadmill'
+                <div style="flex: 1;">
+                    <span style="font-weight: 600;">${e.name}</span>
+                    <div class="text-sm text-primary">
+                        ${e.equipment === 'Treadmill'
             ? `Treadmill • ${e.sets} mins • ${e.reps} kcal`
             : `${e.equipment} • ${e.sets} sets x ${e.reps} reps`
         }
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button onclick="openTutorial('${e.name}')" 
+                        style="background: rgba(204, 254, 30, 0.15); border: 1px solid var(--primary); color: var(--primary); padding: 6px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 600; cursor: pointer; transition: all 0.2s;" 
+                        onmouseover="this.style.background='var(--primary)'; this.style.color='black';" 
+                        onmouseout="this.style.background='rgba(204, 254, 30, 0.15)'; this.style.color='var(--primary)';">
+                        📖
+                    </button>
+                    ${e.id ? `<button class="delete-btn" onclick="deleteExercise('${e.id}')">&times;</button>` : ''}
+                </div>
             </div>
         </div>
     `).join('');
@@ -1129,14 +1251,21 @@ const renderDayDetail = () => {
         if (appState.currentLog.exercises && appState.currentLog.exercises.length > 0) {
             workoutList.innerHTML = appState.currentLog.exercises.map(e => `
                 <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px;">
-                     <div style="display: flex; justify-content: space-between;">
-                        <span style="font-weight: 600;">${e.name}</span>
-                        <span class="text-xs text-muted">${e.equipment}</span>
-                     </div>
-                     <div class="text-sm text-primary" style="margin-top: 4px;">
-                        ${e.equipment === 'Treadmill'
+                     <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="flex: 1;">
+                            <span style="font-weight: 600;">${e.name}</span>
+                            <div class="text-sm text-primary" style="margin-top: 4px;">
+                                ${e.equipment === 'Treadmill'
                     ? `${e.sets} mins • ${e.reps} kcal`
                     : `${e.sets} sets x ${e.reps} reps`}
+                            </div>
+                        </div>
+                        <button onclick="openTutorial('${e.name}')" 
+                            style="background: rgba(204, 254, 30, 0.15); border: 1px solid var(--primary); color: var(--primary); padding: 8px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap; margin-left: 10px; transition: all 0.2s;" 
+                            onmouseover="this.style.background='var(--primary)'; this.style.color='black';" 
+                            onmouseout="this.style.background='rgba(204, 254, 30, 0.15)'; this.style.color='var(--primary)';">
+                            📖 Tutorial
+                        </button>
                      </div>
                 </div>
             `).join('');
@@ -1559,5 +1688,898 @@ document.getElementById('profileForm').addEventListener('submit', (e) => {
     );
 });
 
+// --- TUTORIAL LIBRARY SYSTEM ---
+
+// Enhanced tutorial database with categories and images
+const tutorialDatabase = {
+    'Bicep Curl': {
+        title: 'Bicep Curl',
+        category: 'arms',
+        difficulty: 'Beginner',
+        steps: [
+            'Stand with feet shoulder-width apart, holding dumbbells at your sides with palms facing forward',
+            'Keep your elbows close to your torso and shoulders stable',
+            'Curl the weights upward by contracting your biceps, exhaling as you lift',
+            'Continue until dumbbells are at shoulder level and biceps are fully contracted',
+            'Pause briefly at the top, squeezing your biceps',
+            'Slowly lower the dumbbells back to starting position while inhaling'
+        ],
+        tips: [
+            'Keep your elbows stationary - only your forearms should move',
+            'Avoid swinging or using momentum - control the weight throughout',
+            'Don\'t lean back - maintain an upright posture',
+            'Focus on the mind-muscle connection with your biceps'
+        ],
+        muscles: ['Biceps Brachii', 'Brachialis', 'Forearms'],
+        image: null
+    },
+    'Tricep Extension': {
+        title: 'Overhead Tricep Extension',
+        category: 'arms',
+        difficulty: 'Intermediate',
+        steps: [
+            'Stand or sit with one dumbbell held overhead with both hands',
+            'Position the dumbbell so your palms are pressed against the underside of the top plate',
+            'Keep your elbows close to your head and perpendicular to the floor',
+            'Lower the dumbbell behind your head by bending at the elbows',
+            'Lower until your forearms touch your biceps',
+            'Extend arms back to starting position, contracting triceps'
+        ],
+        tips: [
+            'Keep your elbows in - don\'t let them flare out',
+            'Maintain an upright posture throughout',
+            'Go slowly on the eccentric (lowering) phase',
+            'Don\'t arch your back - engage your core'
+        ],
+        muscles: ['Triceps (all three heads)', 'Anconeus'],
+        image: 'C:/Users/basil/.gemini/antigravity/brain/f4153126-6b24-4925-9f0c-ce7ca2ad7c74/tricep_extension_demo_1766513472248.png'
+    },
+    'Push Up': {
+        title: 'Push Up',
+        category: 'chest',
+        difficulty: 'Beginner',
+        steps: [
+            'Start in a high plank position with hands shoulder-width apart',
+            'Keep your body in a straight line from head to heels',
+            'Engage your core and glutes',
+            'Lower your body by bending elbows to about 45 degrees from your torso',
+            'Go down until chest nearly touches the floor',
+            'Push back up to starting position, fully extending arms'
+        ],
+        tips: [
+            'Don\'t let your hips sag or pike up',
+            'Look slightly ahead, not straight down',
+            'Keep elbows at 45° angle, not flared out to 90°',
+            'Breathe in going down, out going up',
+            'Start with knee push-ups if needed'
+        ],
+        muscles: ['Pectoralis Major', 'Anterior Deltoid', 'Triceps', 'Core'],
+        image: 'C:/Users/basil/.gemini/antigravity/brain/f4153126-6b24-4925-9f0c-ce7ca2ad7c74/pushup_demo_1766513439998.png'
+    },
+    'Shoulder Press': {
+        title: 'Dumbbell Shoulder Press',
+        category: 'shoulders',
+        difficulty: 'Intermediate',
+        steps: [
+            'Sit or stand with dumbbells at shoulder height, palms facing forward',
+            'Keep your core engaged and back straight',
+            'Press dumbbells upward and slightly inward',
+            'Extend arms fully overhead without locking elbows',
+            'Pause briefly at the top',
+            'Lower weights slowly back to shoulder height'
+        ],
+        tips: [
+            'Don\'t arch your back excessively',
+            'Press in a slight arc - dumbbells should come together at top',
+            'Breathe out as you press up',
+            'Keep core tight to protect lower back'
+        ],
+        muscles: ['Anterior Deltoid', 'Lateral Deltoid', 'Triceps', 'Upper Chest'],
+        image: 'C:/Users/basil/.gemini/antigravity/brain/f4153126-6b24-4925-9f0c-ce7ca2ad7c74/shoulder_press_tutorial_1766513039079.png'
+    },
+    'Lateral Raise': {
+        title: 'Lateral Raise',
+        category: 'shoulders',
+        difficulty: 'Beginner',
+        steps: [
+            'Stand with dumbbells at your sides, palms facing inward',
+            'Keep a slight bend in your elbows',
+            'Raise arms out to the sides until parallel with the floor',
+            'Keep your pinky finger slightly higher than your thumb',
+            'Pause at the top',
+            'Lower slowly back to starting position'
+        ],
+        tips: [
+            'Don\'t use momentum - keep it slow and controlled',
+            'Think of pouring water from a pitcher at the top',
+            'Keep shoulders down - don\'t shrug',
+            'Use lighter weights than you think you need'
+        ],
+        muscles: ['Lateral Deltoid', 'Anterior Deltoid', 'Supraspinatus'],
+        image: null
+    },
+    'Bent Over Row': {
+        title: 'Bent Over Row',
+        category: 'back',
+        difficulty: 'Intermediate',
+        steps: [
+            'Bend forward at the waist with dumbbells hanging straight down',
+            'Keep your back straight and core engaged',
+            'Pull dumbbells up to your sides, keeping elbows close to body',
+            'Squeeze shoulder blades together at the top',
+            'Pause briefly',
+            'Lower dumbbells slowly back to starting position'
+        ],
+        tips: [
+            'Don\'t round your back',
+            'Pull with your back muscles, not just your arms',
+            'Keep your head in neutral position',
+            'Think of pulling your elbows back, not the weights up'
+        ],
+        muscles: ['Latissimus Dorsi', 'Rhomboids', 'Rear Deltoids', 'Biceps'],
+        image: null
+    },
+    'Treadmill': {
+        title: 'Treadmill Workout',
+        category: 'cardio',
+        difficulty: 'Beginner',
+        steps: [
+            'Step onto the treadmill and start at a slow walking pace',
+            'Maintain an upright posture with shoulders back',
+            'Look straight ahead, not down at your feet',
+            'Land midfoot and roll through to your toes',
+            'Swing arms naturally at your sides (90° bend at elbows)',
+            'Gradually increase speed to your target pace',
+            'Maintain steady breathing throughout'
+        ],
+        tips: [
+            'Start with 5-minute warm-up at low intensity',
+            'Don\'t hold onto the handrails - affects your form',
+            'Stay centered on the belt, not too far forward or back',
+            'Use a slight incline (1-2%) to simulate outdoor running',
+            'Cool down with 5 minutes of walking',
+            'Stay hydrated before, during, and after'
+        ],
+        muscles: ['Quadriceps', 'Hamstrings', 'Glutes', 'Calves', 'Core'],
+        image: 'C:/Users/basil/.gemini/antigravity/brain/f4153126-6b24-4925-9f0c-ce7ca2ad7c74/running_demo_1766513488196.png'
+    },
+    'Chest Press': {
+        title: 'Dumbbell Chest Press',
+        category: 'chest',
+        difficulty: 'Beginner',
+        steps: [
+            'Lie on a bench or floor with dumbbells at chest level',
+            'Position dumbbells to the sides of chest with elbows bent',
+            'Press dumbbells up until arms are extended',
+            'Dumbbells should follow a slight arc inward',
+            'Pause at the top',
+            'Lower slowly back to starting position'
+        ],
+        tips: [
+            'Keep shoulder blades retracted (squeezed together)',
+            'Don\'t let dumbbells drift too far apart',
+            'Maintain control throughout the movement',
+            'Press dumbbells slightly toward each other at top'
+        ],
+        muscles: ['Pectoralis Major', 'Anterior Deltoid', 'Triceps'],
+        image: null
+    }
+};
+
+// --- EXERCISE TUTORIAL SYSTEM ---
+
+const exerciseTutorials = {
+    // Bicep Exercises
+    'Bicep Curl': {
+        title: 'Bicep Curl',
+        steps: [
+            'Stand with feet shoulder-width apart, holding dumbbells at your sides with palms facing forward',
+            'Keep your elbows close to your torso and shoulders stable',
+            'Curl the weights upward by contracting your biceps, exhaling as you lift',
+            'Continue until dumbbells are at shoulder level and biceps are fully contracted',
+            'Pause briefly at the top, squeezing your biceps',
+            'Slowly lower the dumbbells back to starting position while inhaling'
+        ],
+        tips: [
+            'Keep your elbows stationary - only your forearms should move',
+            'Avoid swinging or using momentum - control the weight throughout',
+            'Don\'t lean back - maintain an upright posture',
+            'Focus on the mind-muscle connection with your biceps'
+        ],
+        muscles: ['Biceps Brachii', 'Brachialis', 'Forearms'],
+        image: null
+    },
+    'Hammer Curl': {
+        title: 'Hammer Curl',
+        steps: [
+            'Stand with feet shoulder-width apart, holding dumbbells at your sides with palms facing your body (neutral grip)',
+            'Keep your elbows close to your torso',
+            'Curl the weights upward while maintaining the neutral grip position',
+            'Continue until dumbbells reach shoulder height',
+            'Pause and squeeze at the top',
+            'Slowly lower back to starting position'
+        ],
+        tips: [
+            'This variation targets the brachialis muscle more effectively',
+            'Maintain neutral grip throughout - don\'t rotate your wrists',
+            'Keep wrists straight to protect joints',
+            'Great for overall arm thickness'
+        ],
+        muscles: ['Brachialis', 'Biceps Brachii', 'Brachioradialis', 'Forearms']
+    },
+
+    // Tricep Exercises
+    'Tricep Extension': {
+        title: 'Overhead Tricep Extension',
+        steps: [
+            'Stand or sit with one dumbbell held overhead with both hands',
+            'Position the dumbbell so your palms are pressed against the underside of the top plate',
+            'Keep your elbows close to your head and perpendicular to the floor',
+            'Lower the dumbbell behind your head by bending at the elbows',
+            'Lower until your forearms touch your biceps',
+            'Extend arms back to starting position, contracting triceps'
+        ],
+        tips: [
+            'Keep your elbows in - don\'t let them flare out',
+            'Maintain an upright posture throughout',
+            'Go slowly on the eccentric (lowering) phase',
+            'Don\'t arch your back - engage your core'
+        ],
+        muscles: ['Triceps (all three heads)', 'Anconeus']
+    },
+    'Tricep Kickback': {
+        title: 'Tricep Kickback',
+        steps: [
+            'Bend forward at the waist, keeping your back straight',
+            'Hold dumbbells with palms facing your torso',
+            'Keep upper arms parallel to your torso and stationary',
+            'Extend forearms back by contracting triceps',
+            'Fully extend until arms are straight',
+            'Slowly return to starting position'
+        ],
+        tips: [
+            'Keep upper arm completely still - only forearm moves',
+            'Focus on squeezing triceps at full extension',
+            'Use lighter weights for perfect form',
+            'Avoid swinging - use controlled movements'
+        ],
+        muscles: ['Triceps (long head)', 'Posterior Deltoid']
+    },
+
+    // Shoulder Exercises
+    'Shoulder Press': {
+        title: 'Dumbbell Shoulder Press',
+        steps: [
+            'Sit or stand with dumbbells at shoulder height, palms facing forward',
+            'Keep your core engaged and back straight',
+            'Press dumbbells upward and slightly inward',
+            'Extend arms fully overhead without locking elbows',
+            'Pause briefly at the top',
+            'Lower weights slowly back to shoulder height'
+        ],
+        tips: [
+            'Don\'t arch your back excessively',
+            'Press in a slight arc - dumbbells should come together at top',
+            'Breathe out as you press up',
+            'Keep core tight to protect lower back'
+        ],
+        muscles: ['Anterior Deltoid', 'Lateral Deltoid', 'Triceps', 'Upper Chest']
+    },
+    'Lateral Raise': {
+        title: 'Lateral Raise',
+        steps: [
+            'Stand with dumbbells at your sides, palms facing inward',
+            'Keep a slight bend in your elbows',
+            'Raise arms out to the sides until parallel with the floor',
+            'Keep your pinky finger slightly higher than your thumb',
+            'Pause at the top',
+            'Lower slowly back to starting position'
+        ],
+        tips: [
+            'Don\'t use momentum - keep it slow and controlled',
+            'Think of pouring water from a pitcher at the top',
+            'Keep shoulders down - don\'t shrug',
+            'Use lighter weights than you think you need'
+        ],
+        muscles: ['Lateral Deltoid', 'Anterior Deltoid', 'Supraspinatus']
+    },
+
+    // Chest Exercises
+    'Push Up': {
+        title: 'Push Up',
+        steps: [
+            'Start in a high plank position with hands shoulder-width apart',
+            'Keep your body in a straight line from head to heels',
+            'Engage your core and glutes',
+            'Lower your body by bending elbows to about 45 degrees from your torso',
+            'Go down until chest nearly touches the floor',
+            'Push back up to starting position, fully extending arms'
+        ],
+        tips: [
+            'Don\'t let your hips sag or pike up',
+            'Look slightly ahead, not straight down',
+            'Keep elbows at 45° angle, not flared out to 90°',
+            'Breathe in going down, out going up',
+            'Start with knee push-ups if needed'
+        ],
+        muscles: ['Pectoralis Major', 'Anterior Deltoid', 'Triceps', 'Core']
+    },
+    'Chest Press': {
+        title: 'Dumbbell Chest Press',
+        steps: [
+            'Lie on a bench or floor with dumbbells at chest level',
+            'Position dumbbells to the sides of chest with elbows bent',
+            'Press dumbbells up until arms are extended',
+            'Dumbbells should follow a slight arc inward',
+            'Pause at the top',
+            'Lower slowly back to starting position'
+        ],
+        tips: [
+            'Keep shoulder blades retracted (squeezed together)',
+            'Don\'t let dumbbells drift too far apart',
+            'Maintain control throughout the movement',
+            'Press dumbbells slightly toward each other at top'
+        ],
+        muscles: ['Pectoralis Major', 'Anterior Deltoid', 'Triceps']
+    },
+
+    // Back Exercises
+    'Bent Over Row': {
+        title: 'Bent Over Row',
+        steps: [
+            'Bend forward at the waist with dumbbells hanging straight down',
+            'Keep your back straight and core engaged',
+            'Pull dumbbells up to your sides, keeping elbows close to body',
+            'Squeeze shoulder blades together at the top',
+            'Pause briefly',
+            'Lower dumbbells slowly back to starting position'
+        ],
+        tips: [
+            'Don\'t round your back',
+            'Pull with your back muscles, not just your arms',
+            'Keep your head in neutral position',
+            'Think of pulling your elbows back, not the weights up'
+        ],
+        muscles: ['Latissimus Dorsi', 'Rhomboids', 'Rear Deltoids', 'Biceps']
+    },
+
+    // Cardio
+    'Cardio': {
+        title: 'Treadmill Running/Walking',
+        steps: [
+            'Step onto the treadmill and start at a slow walking pace',
+            'Maintain an upright posture with shoulders back',
+            'Look straight ahead, not down at your feet',
+            'Land midfoot and roll through to your toes',
+            'Swing arms naturally at your sides (90° bend at elbows)',
+            'Gradually increase speed to your target pace',
+            'Maintain steady breathing throughout'
+        ],
+        tips: [
+            'Start with 5-minute warm-up at low intensity',
+            'Don\'t hold onto the handrails - affects your form',
+            'Stay centered on the belt, not too far forward or back',
+            'Use a slight incline (1-2%) to simulate outdoor running',
+            'Cool down with 5 minutes of walking',
+            'Stay hydrated before, during, and after'
+        ],
+        muscles: ['Quadriceps', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Cardiovascular System']
+    },
+    'Running': {
+        title: 'Treadmill Running',
+        steps: [
+            'Step onto the treadmill and start at a slow walking pace',
+            'Maintain an upright posture with shoulders back',
+            'Look straight ahead, not down at your feet',
+            'Land midfoot and roll through to your toes',
+            'Swing arms naturally at your sides (90° bend at elbows)',
+            'Gradually increase speed to your target pace',
+            'Maintain steady breathing throughout'
+        ],
+        tips: [
+            'Start with 5-minute warm-up at low intensity',
+            'Don\'t hold onto the handrails - affects your form',
+            'Stay centered on the belt, not too far forward or back',
+            'Use a slight incline (1-2%) to simulate outdoor running',
+            'Cool down with 5 minutes of walking',
+            'Stay hydrated before, during, and after'
+        ],
+        muscles: ['Quadriceps', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Cardiovascular System']
+    },
+    'Treadmill': {
+        title: 'Treadmill Workout',
+        steps: [
+            'Step onto the treadmill and start at a slow walking pace',
+            'Maintain an upright posture with shoulders back',
+            'Look straight ahead, not down at your feet',
+            'Land midfoot and roll through to your toes',
+            'Swing arms naturally at your sides (90° bend at elbows)',
+            'Gradually increase speed to your target pace',
+            'Maintain steady breathing throughout'
+        ],
+        tips: [
+            'Start with 5-minute warm-up at low intensity',
+            'Don\'t hold onto the handrails - affects your form',
+            'Stay centered on the belt, not too far forward or back',
+            'Use a slight incline (1-2%) to simulate outdoor running',
+            'Cool down with 5 minutes of walking',
+            'Stay hydrated before, during, and after'
+        ],
+        muscles: ['Quadriceps', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Cardiovascular System']
+    }
+};
+
+// Generic fallback for exercises not in database
+const getGenericTutorial = (exerciseName) => {
+    // Detect exercise type from name
+    const name = exerciseName.toLowerCase();
+
+    if (name.includes('curl') && (name.includes('bicep') || name.includes('arm'))) {
+        return exerciseTutorials['Bicep Curl'];
+    } else if (name.includes('tricep') || name.includes('extension')) {
+        return exerciseTutorials['Tricep Extension'];
+    } else if (name.includes('shoulder') || name.includes('press')) {
+        return exerciseTutorials['Shoulder Press'];
+    } else if (name.includes('push') && name.includes('up')) {
+        return exerciseTutorials['Push Up'];
+    } else if (name.includes('row')) {
+        return exerciseTutorials['Bent Over Row'];
+    } else if (name.includes('raise')) {
+        return exerciseTutorials['Lateral Raise'];
+    } else if (name.includes('treadmill') || name.includes('running') || name.includes('cardio')) {
+        return exerciseTutorials['Cardio'];
+    }
+
+    // Ultimate fallback
+    return {
+        title: exerciseName,
+        steps: [
+            'Position yourself with proper form and alignment',
+            'Engage your core and maintain good posture',
+            'Perform the movement with control',
+            'Focus on the target muscle group',
+            'Complete the full range of motion',
+            'Return to starting position with control'
+        ],
+        tips: [
+            'Start with lighter weights to master form',
+            'Breathe consistently - don\'t hold your breath',
+            'Focus on quality over quantity',
+            'Rest adequately between sets',
+            'Stop if you feel sharp pain'
+        ],
+        muscles: ['Primary Muscle Groups'],
+        image: null
+    };
+};
+
+window.openTutorial = (exerciseName) => {
+    const tutorial = exerciseTutorials[exerciseName] || getGenericTutorial(exerciseName);
+
+    const modal = document.getElementById('tutorialModal');
+    const title = document.getElementById('tutorialTitle');
+    const steps = document.getElementById('tutorialSteps');
+    const tips = document.getElementById('tutorialTips');
+    const muscles = document.getElementById('tutorialMuscles');
+    const img = document.getElementById('tutorialImg');
+    const placeholder = document.getElementById('tutorialPlaceholder');
+
+    // Set title
+    title.textContent = tutorial.title;
+
+    // Set steps
+    steps.innerHTML = tutorial.steps.map(step => `<li style="margin-bottom: 8px;">${step}</li>`).join('');
+
+    // Set tips
+    tips.innerHTML = tutorial.tips.map(tip => `<li style="margin-bottom: 6px;">${tip}</li>`).join('');
+
+    // Set muscles
+    muscles.innerHTML = tutorial.muscles.map(muscle =>
+        `<span style="background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; color: var(--accent);">${muscle}</span>`
+    ).join('');
+
+    // Handle image
+    if (tutorial.image) {
+        img.src = tutorial.image;
+        img.style.display = 'block';
+        placeholder.style.display = 'none';
+    } else {
+        img.style.display = 'none';
+        placeholder.style.display = 'block';
+    }
+
+    // Show modal
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+
+    // Prevent body scroll
+    document.body.style.overflow = 'hidden';
+};
+
+window.closeTutorial = () => {
+    const modal = document.getElementById('tutorialModal');
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+
+    // Restore body scroll
+    document.body.style.overflow = '';
+};
+
+// Close modal on background click
+document.addEventListener('DOMContentLoaded', () => {
+    const modal = document.getElementById('tutorialModal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeTutorial();
+            }
+        });
+    }
+});
+
+// --- TUTORIAL LIBRARY RENDERING SYSTEM ---
+
+// Complete tutorial database with categories - standalone without spread operator
+const tutorialDatabaseWithCategories = {
+    'Bicep Curl': {
+        title: 'Bicep Curl',
+        category: 'arms',
+        difficulty: 'Beginner',
+        image: 'pics/bicep_curl.png',
+        steps: [
+            'Stand with feet shoulder-width apart, holding dumbbells at your sides with palms facing forward',
+            'Keep your elbows close to your torso and shoulders stable',
+            'Curl the weights upward by contracting your biceps, exhaling as you lift',
+            'Continue until dumbbells are at shoulder level and biceps are fully contracted',
+            'Pause briefly at the top, squeezing your biceps',
+            'Slowly lower the dumbbells back to starting position while inhaling'
+        ],
+        tips: [
+            'Keep your elbows stationary - only your forearms should move',
+            'Avoid swinging or using momentum - control the weight throughout',
+            'Don\'t lean back - maintain an upright posture',
+            'Focus on the mind-muscle connection with your biceps'
+        ],
+        muscles: ['Biceps Brachii', 'Brachialis', 'Forearms']
+    },
+    'Tricep Extension': {
+        title: 'Overhead Tricep Extension',
+        category: 'arms',
+        difficulty: 'Intermediate',
+        image: 'pics/tricep_extension.png',
+        steps: [
+            'Stand or sit with one dumbbell held overhead with both hands',
+            'Position the dumbbell so your palms are pressed against the underside of the top plate',
+            'Keep your elbows close to your head and perpendicular to the floor',
+            'Lower the dumbbell behind your head by bending at the elbows',
+            'Lower until your forearms touch your biceps',
+            'Extend arms back to starting position, contracting triceps'
+        ],
+        tips: [
+            'Keep your elbows in - don\'t let them flare out',
+            'Maintain an upright posture throughout',
+            'Go slowly on the eccentric (lowering) phase',
+            'Don\'t arch your back - engage your core'
+        ],
+        muscles: ['Triceps (all three heads)', 'Anconeus']
+    },
+    'Push Up': {
+        title: 'Push Up',
+        category: 'chest',
+        difficulty: 'Beginner',
+        image: 'pics/pushup.png',
+        steps: [
+            'Start in a high plank position with hands shoulder-width apart',
+            'Keep your body in a straight line from head to heels',
+            'Engage your core and glutes',
+            'Lower your body by bending elbows to about 45 degrees from your torso',
+            'Go down until chest nearly touches the floor',
+            'Push back up to starting position, fully extending arms'
+        ],
+        tips: [
+            'Don\'t let your hips sag or pike up',
+            'Look slightly ahead, not straight down',
+            'Keep elbows at 45° angle, not flared out to 90°',
+            'Breathe in going down, out going up',
+            'Start with knee push-ups if needed'
+        ],
+        muscles: ['Pectoralis Major', 'Anterior Deltoid', 'Triceps', 'Core']
+    },
+    'Shoulder Press': {
+        title: 'Dumbbell Shoulder Press',
+        category: 'shoulders',
+        difficulty: 'Intermediate',
+        image: 'pics/shoulder_press.png',
+        steps: [
+            'Sit or stand with dumbbells at shoulder height, palms facing forward',
+            'Keep your core engaged and back straight',
+            'Press dumbbells upward and slightly inward',
+            'Extend arms fully overhead without locking elbows',
+            'Pause briefly at the top',
+            'Lower weights slowly back to shoulder height'
+        ],
+        tips: [
+            'Don\'t arch your back excessively',
+            'Press in a slight arc - dumbbells should come together at top',
+            'Breathe out as you press up',
+            'Keep core tight to protect lower back'
+        ],
+        muscles: ['Anterior Deltoid', 'Lateral Deltoid', 'Triceps', 'Upper Chest']
+    },
+    'Lateral Raise': {
+        title: 'Lateral Raise',
+        category: 'shoulders',
+        difficulty: 'Beginner',
+        image: 'pics/lateral_raise.png',
+        steps: [
+            'Stand with dumbbells at your sides, palms facing inward',
+            'Keep a slight bend in your elbows',
+            'Raise arms out to the sides until parallel with the floor',
+            'Keep your pinky finger slightly higher than your thumb',
+            'Pause at the top',
+            'Lower slowly back to starting position'
+        ],
+        tips: [
+            'Don\'t use momentum - keep it slow and controlled',
+            'Think of pouring water from a pitcher at the top',
+            'Keep shoulders down - don\'t shrug',
+            'Use lighter weights than you think you need'
+        ],
+        muscles: ['Lateral Deltoid', 'Anterior Deltoid', 'Supraspinatus']
+    },
+    'Bent Over Row': {
+        title: 'Bent Over Row',
+        category: 'back',
+        difficulty: 'Intermediate',
+        image: 'pics/bent_over_row.png',
+        steps: [
+            'Bend forward at the waist with dumbbells hanging straight down',
+            'Keep your back straight and core engaged',
+            'Pull dumbbells up to your sides, keeping elbows close to body',
+            'Squeeze shoulder blades together at the top',
+            'Pause briefly',
+            'Lower dumbbells slowly back to starting position'
+        ],
+        tips: [
+            'Don\'t round your back',
+            'Pull with your back muscles, not just your arms',
+            'Keep your head in neutral position',
+            'Think of pulling your elbows back, not the weights up'
+        ],
+        muscles: ['Latissimus Dorsi', 'Rhomboids', 'Rear Deltoids', 'Biceps']
+    },
+    'Treadmill': {
+        title: 'Treadmill Workout',
+        category: 'cardio',
+        difficulty: 'Beginner',
+        image: 'pics/treadmill.png',
+        steps: [
+            'Step onto the treadmill and start at a slow walking pace',
+            'Maintain an upright posture with shoulders back',
+            'Look straight ahead, not down at your feet',
+            'Land midfoot and roll through to your toes',
+            'Swing arms naturally at your sides (90° bend at elbows)',
+            'Gradually increase speed to your target pace',
+            'Maintain steady breathing throughout'
+        ],
+        tips: [
+            'Start with 5-minute warm-up at low intensity',
+            'Don\'t hold onto the handrails - affects your form',
+            'Stay centered on the belt, not too far forward or back',
+            'Use a slight incline (1-2%) to simulate outdoor running',
+            'Cool down with 5 minutes of walking',
+            'Stay hydrated before, during, and after'
+        ],
+        muscles: ['Quadriceps', 'Hamstrings', 'Glutes', 'Calves', 'Core']
+    },
+    'Chest Press': {
+        title: 'Dumbbell Chest Press',
+        category: 'chest',
+        difficulty: 'Beginner',
+        image: 'pics/chest_press.png',
+        steps: [
+            'Lie on a bench or floor with dumbbells at chest level',
+            'Position dumbbells to the sides of chest with elbows bent',
+            'Press dumbbells up until arms are extended',
+            'Dumbbells should follow a slight arc inward',
+            'Pause at the top',
+            'Lower slowly back to starting position'
+        ],
+        tips: [
+            'Keep shoulder blades retracted (squeezed together)',
+            'Don\'t let dumbbells drift too far apart',
+            'Maintain control throughout the movement',
+            'Press dumbbells slightly toward each other at top'
+        ],
+        muscles: ['Pectoralis Major', 'Anterior Deltoid', 'Triceps']
+    }
+};
+
+let currentTutorialFilter = 'all';
+
+window.renderTutorialLibrary = () => {
+    try {
+        console.log('🎯 renderTutorialLibrary called!');
+        const grid = document.getElementById('tutorialGrid');
+        console.log('Grid element:', grid);
+
+        if (!grid) {
+            console.error('❌ Tutorial grid not found!');
+            return;
+        }
+
+        const tutorials = Object.entries(tutorialDatabaseWithCategories);
+        console.log(`📚 Rendering ${tutorials.length} tutorials...`);
+        console.log('Tutorial database:', tutorialDatabaseWithCategories);
+
+        grid.innerHTML = tutorials.map(([key, tutorial]) => {
+            console.log(`Processing: ${key}, category: ${tutorial.category}, image: ${tutorial.image}`);
+
+            // Use actual image if available, otherwise use gradient placeholder
+            let imageHtml;
+            if (tutorial.image) {
+                imageHtml = `<img src="${tutorial.image}" alt="${tutorial.title}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px 12px 0 0;" onerror="this.style.display='none';">`;
+            } else {
+                // Fallback gradient
+                const categoryColors = {
+                    arms: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    chest: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                    back: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                    shoulders: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+                    cardio: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
+                };
+                const gradient = categoryColors[tutorial.category] || 'linear-gradient(135deg, rgba(204, 254, 30, 0.3), rgba(0, 0, 0, 0.5))';
+
+                const categoryIcons = {
+                    arms: '💪',
+                    chest: '🏋️',
+                    back: '🦾',
+                    shoulders: '🤸',
+                    cardio: '🏃'
+                };
+                const icon = categoryIcons[tutorial.category] || '⚡';
+
+                imageHtml = `<div style="width: 100%; height: 100%; background: ${gradient}; display: flex; align-items: center; justify-content: center; font-size: 4rem;">${icon}</div>`;
+            }
+
+            return `
+                <div class="tutorial-card" data-category="${tutorial.category}" data-name="${tutorial.title.toLowerCase()}" onclick="openTutorialFromLibrary('${key}')">
+                    <div class="tutorial-card-image">
+                        ${imageHtml}
+                    </div>
+                    <div class="tutorial-card-content">
+                        <div class="tutorial-card-title">${tutorial.title}</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span class="text-xs text-muted">${tutorial.difficulty}</span>
+                            <span class="text-xs" style="color: var(--primary);">${tutorial.steps.length} steps</span>
+                        </div>
+                        <div class="tutorial-card-muscles">
+                            ${tutorial.muscles.slice(0, 2).map(m => `<span class="muscle-tag">${m}</span>`).join('')}
+                            ${tutorial.muscles.length > 2 ? `<span class="muscle-tag">+${tutorial.muscles.length - 2}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        console.log(`✅ Successfully rendered ${tutorials.length} tutorial cards`);
+        console.log('Grid HTML length:', grid.innerHTML.length);
+    } catch (error) {
+        console.error('❌ Error in renderTutorialLibrary:', error);
+    }
+};
+
+window.filterByCategory = (category) => {
+    currentTutorialFilter = category;
+    console.log(`Filtering by category: ${category}`);
+
+    // Update active button
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.category === category) {
+            btn.classList.add('active');
+        }
+    });
+
+    // Filter cards
+    const cards = document.querySelectorAll('.tutorial-card');
+    let visibleCount = 0;
+    cards.forEach(card => {
+        if (category === 'all' || card.dataset.category === category) {
+            card.style.display = 'block';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+
+    console.log(`Showing ${visibleCount} cards for category: ${category}`);
+};
+
+window.filterTutorials = () => {
+    const searchTerm = document.getElementById('tutorialSearch').value.toLowerCase();
+    const cards = document.querySelectorAll('.tutorial-card');
+    let visibleCount = 0;
+
+    cards.forEach(card => {
+        const name = card.dataset.name;
+        const matchesSearch = name.includes(searchTerm);
+        const matchesCategory = currentTutorialFilter === 'all' || card.dataset.category === currentTutorialFilter;
+
+        if (matchesSearch && matchesCategory) {
+            card.style.display = 'block';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+
+    console.log(`Search: "${searchTerm}" - Showing ${visibleCount} cards`);
+};
+
+window.openTutorialFromLibrary = (exerciseKey) => {
+    console.log(`Opening tutorial: ${exerciseKey}`);
+    const tutorial = tutorialDatabaseWithCategories[exerciseKey] || exerciseTutorials[exerciseKey];
+    if (tutorial) {
+        openTutorialModal(tutorial);
+    } else {
+        console.error(`Tutorial not found: ${exerciseKey}`);
+    }
+};
+
+const openTutorialModal = (tutorial) => {
+    const modal = document.getElementById('tutorialModal');
+    const title = document.getElementById('tutorialTitle');
+    const steps = document.getElementById('tutorialSteps');
+    const tips = document.getElementById('tutorialTips');
+    const muscles = document.getElementById('tutorialMuscles');
+    const img = document.getElementById('tutorialImg');
+    const placeholder = document.getElementById('tutorialPlaceholder');
+
+    // Set title
+    title.textContent = tutorial.title;
+
+    // Set steps
+    steps.innerHTML = tutorial.steps.map(step => `<li style="margin-bottom: 8px;">${step}</li>`).join('');
+
+    // Set tips
+    tips.innerHTML = tutorial.tips.map(tip => `<li style="margin-bottom: 6px;">${tip}</li>`).join('');
+
+    // Set muscles
+    muscles.innerHTML = tutorial.muscles.map(muscle =>
+        `<span style="background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; color: var(--accent);">${muscle}</span>`
+    ).join('');
+
+    // Handle image from pics folder
+    if (tutorial.image) {
+        img.src = tutorial.image;
+        img.style.display = 'block';
+        placeholder.style.display = 'none';
+        img.onerror = () => {
+            img.style.display = 'none';
+            placeholder.style.display = 'block';
+        };
+    } else {
+        img.style.display = 'none';
+        placeholder.style.display = 'block';
+    }
+
+    // Show modal
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+
+    // Prevent body scroll
+    document.body.style.overflow = 'hidden';
+};
+
 // Start
 initApp();
+
+// Check if we're on the tutorials view after initialization
+setTimeout(() => {
+    const tutorialsView = document.getElementById('tutorials');
+    if (tutorialsView && !tutorialsView.classList.contains('hidden')) {
+        console.log('⚡ Tutorials view is visible on load, rendering library...');
+        window.renderTutorialLibrary();
+    }
+}, 500);

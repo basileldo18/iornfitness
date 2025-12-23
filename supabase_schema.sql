@@ -9,6 +9,7 @@ create table public.profiles (
   user_id text not null primary key, -- Just the UUID string stored in local storage
   weight numeric default 70,
   height numeric default 175,
+  age integer default 25,
   carb_goal integer default 250,
   updated_at timestamp with time zone default timezone('utc'::text, now())
 );

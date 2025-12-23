@@ -70,6 +70,14 @@
             </svg>
             <span>Log</span>
         </button>
+        <button class="nav-item"
+            onclick="navigateTo('tutorials'); setTimeout(() => window.renderTutorialLibrary(), 100);">
+            <svg class="nav-icon" viewBox="0 0 24 24">
+                <path
+                    d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z" />
+            </svg>
+            <span>Tutorials</span>
+        </button>
         <button class="nav-item" onclick="navigateTo('history')">
             <svg class="nav-icon" viewBox="0 0 24 24">
                 <path
@@ -280,6 +288,37 @@
         </section>
 
 
+        <!-- TUTORIALS VIEW -->
+        <section id="tutorials" class="view hidden">
+            <h2>Exercise Tutorials</h2>
+            <p class="text-muted text-sm" style="margin-top: -10px; margin-bottom: 20px;">Learn proper form for each
+                exercise</p>
+
+            <!-- Search Bar -->
+            <div class="card" style="padding: 15px; margin-bottom: 20px;">
+                <input type="text" id="tutorialSearch" class="input-field" placeholder="🔍 Search exercises..."
+                    style="margin: 0;" onkeyup="filterTutorials()">
+            </div>
+
+            <!-- Exercise Categories -->
+            <div style="display: flex; gap: 8px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 10px;">
+                <button class="filter-btn active" onclick="filterByCategory('all')" data-category="all">All</button>
+                <button class="filter-btn" onclick="filterByCategory('arms')" data-category="arms">Arms</button>
+                <button class="filter-btn" onclick="filterByCategory('chest')" data-category="chest">Chest</button>
+                <button class="filter-btn" onclick="filterByCategory('back')" data-category="back">Back</button>
+                <button class="filter-btn" onclick="filterByCategory('shoulders')"
+                    data-category="shoulders">Shoulders</button>
+                <button class="filter-btn" onclick="filterByCategory('cardio')" data-category="cardio">Cardio</button>
+            </div>
+
+            <!-- Tutorial Cards Grid -->
+            <div id="tutorialGrid"
+                style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px;">
+                <!-- Populated by JS -->
+            </div>
+        </section>
+
+
         <!-- HISTORY VIEW -->
         <section id="history" class="view hidden">
             <h2>History</h2>
@@ -436,6 +475,7 @@
                     <input type="number" class="input-field" id="profileAge">
 
 
+
                     <button type="submit" class="btn">Save Profile</button>
 
                 </form>
@@ -482,9 +522,67 @@
             </div>
         </section>
 
+        <!-- TUTORIAL MODAL -->
+        <div id="tutorialModal" class="hidden"
+            style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.95); z-index: 2000; flex-direction: column; justify-content: flex-start; align-items: center; overflow-y: auto; padding: 20px;">
+
+            <div
+                style="max-width: 600px; width: 100%; background: linear-gradient(145deg, #1a1d24, #14161b); border-radius: 16px; padding: 0; overflow: hidden; margin-top: 20px;">
+                <!-- Header -->
+                <div
+                    style="background: var(--primary); color: black; padding: 20px; display: flex; justify-content: space-between; align-items: center;">
+                    <h2 id="tutorialTitle" style="margin: 0; font-size: 1.5rem; font-weight: 800;">Exercise Tutorial
+                    </h2>
+                    <button onclick="closeTutorial()"
+                        style="background: none; border: none; color: black; font-size: 2rem; cursor: pointer; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">&times;</button>
+                </div>
+
+                <!-- Content -->
+                <div style="padding: 20px;">
+                    <!-- Exercise Image/Animation -->
+                    <div id="tutorialImage"
+                        style="width: 100%; aspect-ratio: 16/9; background: rgba(0,0,0,0.3); border-radius: 12px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                        <img id="tutorialImg" src="" alt="Exercise demonstration"
+                            style="width: 100%; height: 100%; object-fit: cover; display: none;">
+                        <svg id="tutorialPlaceholder" viewBox="0 0 24 24" fill="var(--primary)" width="64" height="64">
+                            <path
+                                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                        </svg>
+                    </div>
+
+                    <!-- Instructions -->
+                    <div style="margin-bottom: 20px;">
+                        <h3 style="color: var(--primary); margin-bottom: 10px;">How to Perform</h3>
+                        <ol id="tutorialSteps"
+                            style="color: rgba(255,255,255,0.9); line-height: 1.8; padding-left: 20px;">
+                            <!-- Steps populated by JS -->
+                        </ol>
+                    </div>
+
+                    <!-- Tips -->
+                    <div
+                        style="background: rgba(204, 254, 30, 0.1); border-left: 3px solid var(--primary); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                        <h3 style="color: var(--primary); margin: 0 0 10px 0; font-size: 1rem;">💡 Pro Tips</h3>
+                        <ul id="tutorialTips"
+                            style="color: rgba(255,255,255,0.8); line-height: 1.6; padding-left: 20px; margin: 0;">
+                            <!-- Tips populated by JS -->
+                        </ul>
+                    </div>
+
+                    <!-- Muscles Targeted -->
+                    <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px;">
+                        <h3 style="color: var(--accent); margin: 0 0 10px 0; font-size: 1rem;">🎯 Muscles Targeted</h3>
+                        <div id="tutorialMuscles" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            <!-- Muscle tags populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </main>
 
-    <script src="app.js?v=2.0"></script>
+    <script src="app.js?v=4.2"></script>
 </body>
 
 </html>
